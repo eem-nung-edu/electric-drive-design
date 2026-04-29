@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D візуалізатор сервоприводної системи</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: rgba(15, 23, 42, 0.86);
+      --panel-strong: rgba(15, 23, 42, 0.96);
+      --line: rgba(148, 163, 184, 0.24);
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --danger-dark: #7f1d1d;
+      --input: rgba(30, 41, 59, 0.9);
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      --radius: 18px;
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      font-family: var(--font);
+      color: var(--text);
+      background: radial-gradient(circle at top left, #1e3a8a 0, transparent 34%),
+        radial-gradient(circle at bottom right, #0f766e 0, transparent 28%),
+        var(--bg);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #scene {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+    }
+
+    .hud {
+      position: absolute;
+      inset: 18px;
+      display: grid;
+      grid-template-columns: 304px minmax(300px, 1fr) 288px;
+      grid-template-rows: auto 1fr auto;
+      gap: 16px;
+      pointer-events: none;
+    }
+
+    .card {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      backdrop-filter: blur(16px);
+    }
+
+    .header {
+      grid-column: 1 / 4;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #38bdf8, #22c55e);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 10px 24px rgba(56, 189, 248, 0.24);
+      color: #082f49;
+      font-weight: 900;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.25;
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .left-panel,
+    .right-panel {
+      padding: 16px;
+      align-self: start;
+      max-height: calc((100vh - 138px) * 1.1);
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+    }
+
+    .left-panel {
+      grid-column: 1;
+      grid-row: 2 / 4;
+    }
+
+    .right-panel {
+      grid-column: 3;
+      grid-row: 2 / 4;
+    }
+
+    .status-strip {
+      grid-column: 2;
+      grid-row: 3;
+      padding: 14px 16px;
+      align-self: end;
+      transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .status-strip.overheat {
+      border-color: rgba(245, 158, 11, 0.95) !important;
+      background: linear-gradient(135deg, rgba(120, 53, 15, 0.96), rgba(245, 158, 11, 0.28)) !important;
+      box-shadow: 0 18px 60px rgba(120, 53, 15, 0.46), 0 0 0 1px rgba(251, 191, 36, 0.28) !important;
+    }
+
+    .status-strip.burned {
+      border-color: rgba(239, 68, 68, 1) !important;
+      background: linear-gradient(135deg, rgba(69, 10, 10, 0.98), rgba(185, 28, 28, 0.56)) !important;
+      box-shadow: 0 18px 60px rgba(127, 29, 29, 0.56), 0 0 0 1px rgba(248, 113, 113, 0.34) !important;
+    }
+
+    .status-strip.burned .status-title,
+    .status-strip.overheat .status-title {
+      color: #ffffff;
+    }
+
+    .status-strip.overheat .status-title::before {
+      content: "🔥 ";
+    }
+
+    .status-strip.burned .status-title::before {
+      content: "⚠ ";
+      color: #fde68a;
+    }
+
+    .status-strip.burned .status-text,
+    .status-strip.overheat .status-text {
+      color: #ffedd5;
+      font-weight: 650;
+    }
+
+    .status-strip.overheat .legend .pill.warn {
+      border-color: rgba(245, 158, 11, 0.95);
+      background: rgba(245, 158, 11, 0.28);
+      color: #ffffff;
+      box-shadow: 0 0 18px rgba(245, 158, 11, 0.28);
+      font-weight: 800;
+    }
+
+    .status-strip.burned .legend .pill.danger {
+      border-color: rgba(239, 68, 68, 1);
+      background: rgba(239, 68, 68, 0.34);
+      color: #ffffff;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.34);
+      font-weight: 800;
+    }
+
+    .status-strip.overheat .legend .pill:not(.warn),
+    .status-strip.burned .legend .pill:not(.danger) {
+      opacity: 0.46;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .section-title h2,
+    .section-title h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .hint-small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .unit {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .variant-select {
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: var(--input);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .variant-select:focus {
+      border-color: rgba(56, 189, 248, 0.8);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
+    }
+
+    .field input {
+      width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: var(--input);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      outline: none;
+      transition: border 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    .field input:focus {
+      border-color: rgba(56, 189, 248, 0.8);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
+      background: rgba(15, 23, 42, 0.96);
+    }
+
+    .field input.invalid {
+      border-color: rgba(239, 68, 68, 0.95);
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      color: #07111f;
+      background: linear-gradient(135deg, #38bdf8, #22c55e);
+      padding: 11px 13px;
+      border-radius: 13px;
+      font-weight: 760;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+      user-select: none;
+    }
+
+    .btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn.secondary {
+      color: var(--text);
+      background: rgba(30, 41, 59, 0.92);
+      border-color: rgba(148, 163, 184, 0.28);
+    }
+
+    .btn.danger {
+      color: #fff;
+      background: linear-gradient(135deg, #ef4444, #f97316);
+    }
+
+    .btn.ghost {
+      color: var(--text);
+      background: rgba(15, 23, 42, 0.48);
+      border-color: rgba(148, 163, 184, 0.28);
+    }
+
+    .readout {
+      display: grid;
+      gap: 10px;
+    }
+
+    .metric {
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(2, 6, 23, 0.35);
+      border-radius: 14px;
+    }
+
+    .metric-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-value small {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .bar {
+      width: 100%;
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      margin-top: 9px;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: var(--accent);
+      transition: width 280ms ease, background 280ms ease;
+    }
+
+    .load-zones {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 4px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.2;
+    }
+
+    .load-zones span {
+      padding-top: 4px;
+      border-top: 2px solid rgba(148, 163, 184, 0.24);
+      text-align: center;
+    }
+
+    .load-zones span:nth-child(1) {
+      border-color: rgba(34, 197, 94, 0.65);
+    }
+
+    .load-zones span:nth-child(2) {
+      border-color: rgba(245, 158, 11, 0.75);
+    }
+
+    .load-zones span:nth-child(3) {
+      border-color: rgba(239, 68, 68, 0.75);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      color: #cbd5e1;
+      background: rgba(30, 41, 59, 0.72);
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 16px currentColor;
+    }
+
+    .pill.ok .dot,
+    .bar.ok > span {
+      background: var(--accent-2);
+    }
+
+    .pill.warn .dot,
+    .bar.warn > span {
+      background: var(--warn);
+    }
+
+    .pill.danger .dot,
+    .bar.danger > span {
+      background: var(--danger);
+    }
+
+    .messages {
+      display: grid;
+      gap: 9px;
+      margin-top: 14px;
+    }
+
+    .message {
+      padding: 11px 12px;
+      border-radius: 13px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(2, 6, 23, 0.28);
+      color: #dbeafe;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .message.warn {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.10);
+      color: #fde68a;
+    }
+
+    .message.danger {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.12);
+      color: #fecaca;
+    }
+
+    .message.motor-burned {
+      border-color: rgba(239, 68, 68, 0.95);
+      background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(239, 68, 68, 0.30));
+      color: #ffffff;
+      box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.28), 0 14px 32px rgba(127, 29, 29, 0.36);
+      font-weight: 800;
+    }
+
+    .message.motor-burned::before {
+      content: "⚠ ";
+      color: #fde68a;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .status-main {
+      min-width: 0;
+    }
+
+    .status-title {
+      font-weight: 850;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .status-text {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 23, 0.64);
+      backdrop-filter: blur(10px);
+      z-index: 50;
+      padding: 20px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      width: min(760px, 100%);
+      max-height: min(680px, calc(100vh - 40px));
+      overflow: auto;
+      background: var(--panel-strong);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 24px;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+      padding: 20px;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+
+    .modal-header h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    .close-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      border: 1px solid rgba(251, 191, 36, 0.38);
+      background: rgba(120, 53, 15, 0.62);
+      color: #fde68a;
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 120ms ease;
+    }
+
+    .close-btn:hover {
+      border-color: rgba(251, 191, 36, 0.72);
+      background: rgba(146, 64, 14, 0.82);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .panel-close-btn {
+      display: none;
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      border: 1px solid rgba(251, 191, 36, 0.38);
+      background: rgba(120, 53, 15, 0.62);
+      color: #fde68a;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 120ms ease;
+    }
+
+    .panel-close-btn:hover {
+      border-color: rgba(251, 191, 36, 0.72);
+      background: rgba(146, 64, 14, 0.82);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .data-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .data-item {
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.32);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 14px;
+    }
+
+    .data-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .data-value {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .formula-note {
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.55;
+      margin-top: 14px;
+      padding: 13px;
+      border-radius: 14px;
+      border: 1px solid rgba(56, 189, 248, 0.24);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .scope-toggle-btn {
+      border: 1px solid rgba(56, 189, 248, 0.34);
+      background: rgba(14, 116, 144, 0.18);
+      color: #bae6fd;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 120ms ease;
+    }
+
+    .scope-toggle-btn:hover {
+      border-color: rgba(56, 189, 248, 0.72);
+      background: rgba(14, 116, 144, 0.34);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .scope-grid.collapsed {
+      display: none;
+    }
+
+    .scope-card {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(2, 6, 23, 0.38);
+      box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.04);
+    }
+
+    .scope-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .scope-channel-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 76px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.26);
+      background: rgba(14, 116, 144, 0.16);
+      color: #bae6fd;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .scope-card-title {
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .scope-screen {
+      position: relative;
+      border-radius: 14px;
+      border: 1px solid rgba(34, 197, 94, 0.24);
+      background:
+        linear-gradient(rgba(34, 197, 94, 0.06), rgba(34, 197, 94, 0.03)),
+        linear-gradient(90deg, rgba(34, 197, 94, 0.08) 1px, transparent 1px),
+        linear-gradient(rgba(34, 197, 94, 0.08) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(3, 7, 18, 0.94));
+      background-size: auto, 28px 28px, 28px 28px, auto;
+      padding: 12px 10px 28px 24px;
+      overflow: hidden;
+    }
+
+    .scope-screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 0%, rgba(34, 197, 94, 0.08), transparent 56%);
+    }
+
+    .scope-canvas {
+      display: block;
+      width: 100%;
+      height: 126px;
+      border-radius: 8px;
+    }
+
+    .scope-axis-y {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      color: rgba(187, 247, 208, 0.86);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .scope-axis-x {
+      position: absolute;
+      left: 24px;
+      right: 10px;
+      bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: rgba(187, 247, 208, 0.86);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .scope-legend {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+
+    .scope-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #cbd5e1;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .scope-legend-line {
+      width: 22px;
+      height: 0;
+      border-top-width: 3px;
+      border-top-style: solid;
+      border-radius: 999px;
+    }
+
+    .scope-legend-line.demand {
+      border-top-color: #34d399;
+    }
+
+    .scope-legend-line.selected {
+      border-top-color: #fbbf24;
+      border-top-style: dashed;
+    }
+
+
+    @media (max-width: 900px), (orientation: portrait) {
+      .scope-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .scope-canvas {
+        height: 116px;
+      }
+    }
+
+    .startup-hint {
+      position: fixed;
+      left: 50%;
+      top: 108px;
+      width: min(720px, calc(100vw - 36px));
+      transform: translateX(-50%);
+      z-index: 48;
+      padding: 16px 20px;
+      border-radius: 20px;
+      border: 1px solid rgba(251, 191, 36, 0.78);
+      background: linear-gradient(135deg, rgba(120, 53, 15, 0.96), rgba(14, 116, 144, 0.88));
+      color: var(--text);
+      box-shadow: 0 22px 70px rgba(120, 53, 15, 0.38), 0 0 0 1px rgba(251, 191, 36, 0.18);
+      backdrop-filter: blur(18px);
+      pointer-events: auto;
+      transition: opacity 200ms ease, transform 200ms ease, visibility 200ms ease;
+    }
+
+    .startup-hint.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(-12px);
+    }
+
+    .startup-hint-title {
+      margin: 0 0 7px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+
+    .startup-hint-title::before {
+      content: "💡 ";
+    }
+
+    .startup-hint-text {
+      margin: 0;
+      color: #fffbeb;
+      font-size: 14px;
+      line-height: 1.5;
+      font-weight: 650;
+    }
+
+    .current-variant-note {
+      margin-top: 10px;
+      padding: 10px 11px;
+      border-radius: 13px;
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      background: rgba(56, 189, 248, 0.08);
+      color: #dbeafe;
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 700;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%) translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 11px 16px;
+      box-shadow: var(--shadow);
+      transition: opacity 200ms ease, transform 200ms ease;
+      z-index: 60;
+      font-size: 13px;
+    }
+
+    .toast.open {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 1180px) {
+      body {
+        overflow: auto;
+      }
+
+      #app {
+        min-height: 100vh;
+      }
+
+      #scene {
+        position: fixed;
+      }
+
+      .hud {
+        position: relative;
+        inset: auto;
+        padding: 14px;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        min-height: 100vh;
+      }
+
+      .header,
+      .left-panel,
+      .right-panel,
+      .status-strip {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
+      .left-panel,
+      .right-panel {
+        max-height: none;
+      }
+
+      .header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .status-line {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    .mobile-panel-tabs {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .button-row,
+      .data-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header-actions {
+        width: 100%;
+      }
+
+      .header-actions .btn {
+        flex: 1;
+      }
+    }
+
+    @media (max-width: 1366px) and (hover: none) and (pointer: coarse),
+           (max-width: 1366px) and (any-hover: none) and (any-pointer: coarse) {
+      html,
+      body {
+        overflow: hidden;
+      }
+
+      #scene {
+        position: fixed;
+        inset: 0;
+      }
+
+      .hud {
+        position: fixed;
+        inset: 10px;
+        display: block;
+        pointer-events: none;
+        min-height: auto;
+        padding: 0;
+      }
+
+      .header {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 12px;
+        max-height: 168px;
+        overflow: auto;
+        pointer-events: auto;
+      }
+
+      .brand {
+        gap: 10px;
+      }
+
+      .logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        flex: 0 0 auto;
+      }
+
+      h1 {
+        font-size: 15px;
+      }
+
+      .subtitle {
+        display: none;
+      }
+
+      .header-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+      }
+
+      .header-actions .btn {
+        width: 100%;
+        padding: 9px 10px;
+        font-size: 12px;
+      }
+
+      .mobile-panel-tabs {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: max(10px, env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        padding: 7px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        background: rgba(15, 23, 42, 0.92);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+        pointer-events: auto;
+        z-index: 45;
+      }
+
+      .mobile-tab {
+        min-height: 42px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 13px;
+        background: rgba(30, 41, 59, 0.78);
+        color: var(--text);
+        font-weight: 800;
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .mobile-tab.active {
+        color: #07111f;
+        background: linear-gradient(135deg, #38bdf8, #22c55e);
+        border-color: transparent;
+      }
+
+      .left-panel,
+      .right-panel,
+      .status-strip {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: calc(72px + max(10px, env(safe-area-inset-bottom)));
+        width: auto;
+        max-height: min(58vh, 560px);
+        overflow: auto;
+        padding: 14px;
+        pointer-events: auto;
+        transform: translateY(calc(100% + 96px));
+        opacity: 0;
+        visibility: hidden;
+        transition: transform 220ms ease, opacity 180ms ease, visibility 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+        z-index: 42;
+      }
+
+      .left-panel.mobile-active,
+      .right-panel.mobile-active,
+      .status-strip.mobile-active {
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .status-strip {
+        align-self: auto;
+      }
+
+      .status-line {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .legend {
+        justify-content: flex-start;
+      }
+
+      .section-title {
+        position: relative;
+        align-items: flex-start;
+        justify-content: center;
+        flex-direction: column;
+        min-height: 38px;
+        padding-right: 42px;
+        text-align: left;
+      }
+
+      .section-title h2,
+      .section-title h3,
+      .section-title .pill {
+        justify-self: start;
+      }
+
+      .panel-close-btn {
+        position: absolute;
+        top: 0;
+        right: 0;
+        display: inline-grid;
+        place-items: center;
+        flex: 0 0 auto;
+      }
+
+      .status-main {
+        position: relative;
+        width: 100%;
+        padding-right: 42px;
+        text-align: left;
+      }
+
+      .status-main .panel-close-btn {
+        top: 0;
+        right: 0;
+      }
+
+      .metric-value {
+        font-size: 19px;
+      }
+
+      .messages {
+        margin-top: 10px;
+      }
+
+      .message {
+        font-size: 12px;
+      }
+
+      .modal {
+        max-height: calc(100vh - 28px);
+        padding: 16px;
+      }
+
+      .startup-hint {
+        top: 176px;
+        bottom: auto;
+        transform: translateX(-50%);
+      }
+
+      .startup-hint.hidden {
+        transform: translateX(-50%) translateY(-14px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene" aria-label="3D модель сервоприводної системи"></canvas>
+
+    <main class="hud" aria-label="Панель керування симулятором">
+      <header class="card header">
+        <div class="brand">
+          <div class="logo" aria-hidden="true">3D</div>
+          <div>
+            <h1>Візуалізатор вибору сервоприводу для лінійного переміщення</h1>
+            <div class="subtitle">Навчальна модель: стіл, напрямні, кулькогвинт, редуктор, сервопривод, перегрів і пошкодження.</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="sourceDataButton" class="btn ghost" type="button">Вихідні дані</button>
+          <button id="resetViewButton" class="btn secondary" type="button">Центрувати камеру</button>
+        </div>
+      </header>
+
+      <section class="card left-panel" aria-label="Введення параметрів двигуна">
+        <div class="section-title">
+          <h2>Параметри, обрані студентом</h2>
+          <button class="panel-close-btn" type="button" data-close-mobile-panel aria-label="Закрити панель параметрів">×</button>
+          <span id="validationBadge" class="pill warn"><span class="dot"></span>Очікує вводу</span>
+        </div>
+        <p class="hint-small">Введіть характеристики сервоприводу, які, на вашу думку, підходять для задачі. Вихідні дані задачі можна відкрити окремою кнопкою зверху.</p>
+        <div id="currentVariantNote" class="current-variant-note">Поточний варіант: Приклад</div>
+
+        <form id="motorForm" class="form-grid" novalidate>
+          <div class="field">
+            <label for="selectedTorque">Обраний момент двигуна <span class="unit">Н·м</span></label>
+            <input id="selectedTorque" name="selectedTorque" type="number" inputmode="decimal" min="0" step="0.0001" value="0.0678" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="selectedPower">Обрана потужність двигуна <span class="unit">Вт</span></label>
+            <input id="selectedPower" name="selectedPower" type="number" inputmode="decimal" min="0" step="0.01" value="28.36" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="selectedSpeed">Обрана швидкість двигуна <span class="unit">об/хв</span></label>
+            <input id="selectedSpeed" name="selectedSpeed" type="number" inputmode="decimal" min="0" step="1" value="3996" autocomplete="off" />
+          </div>
+
+          <div class="button-row">
+            <button class="btn" type="submit">Перевірити і запустити</button>
+            <button id="resetDamageButton" class="btn danger" type="button">Скинути</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card right-panel" aria-label="Діагностика системи">
+        <div class="section-title">
+          <h2>Діагностика</h2>
+          <button class="panel-close-btn" type="button" data-close-mobile-panel aria-label="Закрити панель діагностики">×</button>
+          <span id="modeBadge" class="pill ok"><span class="dot"></span>Готово</span>
+        </div>
+        <div class="readout">
+          <article class="metric">
+            <div class="metric-top"><span>Запас моменту</span><span id="torqueLabel">—</span></div>
+            <div class="metric-value" id="torquePercent">— <small>%</small></div>
+            <div id="torqueBar" class="bar"><span></span></div>
+          </article>
+          <article class="metric">
+            <div class="metric-top"><span>Запас потужності</span><span id="powerLabel">—</span></div>
+            <div class="metric-value" id="powerPercent">— <small>%</small></div>
+            <div id="powerBar" class="bar"><span></span></div>
+          </article>
+          <article class="metric">
+            <div class="metric-top"><span>Відповідність швидкості</span><span id="speedLabel">—</span></div>
+            <div class="metric-value" id="speedPercent">— <small>%</small></div>
+            <div id="speedBar" class="bar"><span></span></div>
+          </article>
+          <article class="metric">
+            <div class="metric-top"><span>Навантаження двигуна</span><span id="loadLabel">—</span></div>
+            <div class="metric-value" id="loadPercent">— <small>%</small></div>
+            <div id="loadBar" class="bar"><span></span></div>
+            <div class="load-zones" aria-hidden="true"><span>0–100% норма</span><span>100–150% ризик</span><span>&gt;150% аварія</span></div>
+          </article>
+        </div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+      </section>
+
+      <nav class="mobile-panel-tabs" aria-label="Мобільна навігація панелями">
+        <button class="mobile-tab active" type="button" data-mobile-panel="none">3D модель</button>
+        <button class="mobile-tab" type="button" data-mobile-panel="parameters">Параметри</button>
+        <button class="mobile-tab" type="button" data-mobile-panel="diagnostics">Діагностика</button>
+        <button class="mobile-tab" type="button" data-mobile-panel="status">Стан</button>
+      </nav>
+
+      <section class="card status-strip" aria-label="Поточний стан моделі">
+        <div class="status-line">
+          <div class="status-main">
+            <button class="panel-close-btn" type="button" data-close-mobile-panel aria-label="Закрити панель стану">×</button>
+            <div id="statusTitle" class="status-title">Система готова до перевірки</div>
+            <button id="scopeToggleButton" class="scope-toggle-btn" type="button" aria-expanded="true" aria-controls="scopeGrid">Згорнути графіки</button>
+            <div id="statusText" class="status-text">Натисніть «Перевірити і запустити», щоб побачити рух столу та реакцію сервоприводу.</div>
+            <div id="scopeGrid" class="scope-grid" aria-label="Інтерактивні осцилограми стану сервоприводу">
+              <article class="scope-card">
+                <div class="scope-card-header">
+                  <div class="scope-channel-badge">Канал A</div>
+                  <div class="scope-card-title">Момент двигуна M(t)</div>
+                </div>
+                <div class="scope-screen">
+                  <div class="scope-axis-y">M, Н·м</div>
+                  <canvas id="momentScopeCanvas" class="scope-canvas" aria-label="Осцилограма моменту двигуна"></canvas>
+                  <div class="scope-axis-x">
+                    <span>0 c</span>
+                    <span>t, c</span>
+                    <span id="momentScopeTimeMax">—</span>
+                  </div>
+                </div>
+                <div class="scope-legend">
+                  <span class="scope-legend-item"><span class="scope-legend-line demand"></span>навантаження</span>
+                </div>
+              </article>
+
+              <article class="scope-card">
+                <div class="scope-card-header">
+                  <div class="scope-channel-badge">Канал B</div>
+                  <div class="scope-card-title">Потужність P(t)</div>
+                </div>
+                <div class="scope-screen">
+                  <div class="scope-axis-y">P, Вт</div>
+                  <canvas id="powerScopeCanvas" class="scope-canvas" aria-label="Осцилограма потужності двигуна"></canvas>
+                  <div class="scope-axis-x">
+                    <span>0 c</span>
+                    <span>t, c</span>
+                    <span id="powerScopeTimeMax">—</span>
+                  </div>
+                </div>
+                <div class="scope-legend">
+                  <span class="scope-legend-item"><span class="scope-legend-line demand"></span>навантаження</span>
+                  <span class="scope-legend-item"><span class="scope-legend-line selected"></span>обрано</span>
+                  <span class="scope-legend-item"><span class="scope-legend-line cursor"></span>поточний час</span>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="legend">
+            <span class="pill ok"><span class="dot"></span>норма</span>
+            <span class="pill warn"><span class="dot"></span>ризик</span>
+            <span class="pill danger"><span class="dot"></span>пошкодження</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="startupHint" class="startup-hint" role="status" aria-live="polite">
+      <div id="startupHintTitle" class="startup-hint-title">Початок роботи</div>
+      <p id="startupHintText" class="startup-hint-text">Виберіть свій варіант у формі «Вихідні дані» і внесіть розраховані налаштування системи в меню «Параметри».</p>
+    </div>
+
+    <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="sourceTitle">
+      <section class="modal">
+        <div class="modal-header">
+          <div>
+            <h2 id="sourceTitle">Вихідні дані задачі</h2>
+            <div class="hint-small">Ці дані студент використовує для самостійного розрахунку потрібного моменту, потужності та частоти обертання двигуна.</div>
+          </div>
+          <button id="closeModalButton" class="close-btn" type="button" aria-label="Закрити">×</button>
+        </div>
+        <div class="field" style="margin-bottom: 14px;">
+          <label for="variantSelect">Вибір варіанту задачі <span class="unit">поточні вихідні дані</span></label>
+          <select id="variantSelect" class="variant-select" aria-label="Виберіть варіант задачі"></select>
+        </div>
+        <div class="data-grid" id="sourceDataGrid"></div>
+        <div class="formula-note">
+          <strong>Підказка без готової відповіді:</strong> розрахунок можна виконати через силу тертя, прискорення, сумарну силу, момент на гвинті, момент після редуктора та потужність за кутовою швидкістю. У цьому симуляторі готові потрібні значення не показуються студенту, але використовуються для автоматичної перевірки введених параметрів.
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+
+    const _0x48dc98=_0x2708;(function(_0x507812,_0x38e956){const _0x13b4c2=_0x2708,_0x2cd5dc=_0x507812();while(!![]){try{const _0x43f7e3=parseInt(_0x13b4c2(0x22d))/0x1*(parseInt(_0x13b4c2(0x167))/0x2)+parseInt(_0x13b4c2(0x125))/0x3*(-parseInt(_0x13b4c2(0x159))/0x4)+parseInt(_0x13b4c2(0x9d))/0x5*(-parseInt(_0x13b4c2(0x27a))/0x6)+-parseInt(_0x13b4c2(0x1d6))/0x7+-parseInt(_0x13b4c2(0x216))/0x8*(parseInt(_0x13b4c2(0x1a7))/0x9)+-parseInt(_0x13b4c2(0xf2))/0xa+parseInt(_0x13b4c2(0x15e))/0xb;if(_0x43f7e3===_0x38e956)break;else _0x2cd5dc['push'](_0x2cd5dc['shift']());}catch(_0x52111c){_0x2cd5dc['push'](_0x2cd5dc['shift']());}}}(_0x3208,0x5b182));import*as _0x28acce from'three';import{OrbitControls}from'three/addons/controls/OrbitControls.js';const TASK_VARIANTS=Object['freeze']([{'id':_0x48dc98(0x21a),'title':'Приклад','data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x32,'frictionCoefficient':0.02,'strokeMm':0x1f4,'moveTimeSec':1.5,'gearRatio':0x5,'gearboxEfficiency':0.9,'servoEfficiency':0.85,'powerReserveFactor':1.2,'screwDiameterMm':0x14,'screwLeadMm':0x19,'gravity':9.81})},{'id':'variant-1','title':_0x48dc98(0x117),'data':Object['freeze']({'tableMassKg':0x23,'frictionCoefficient':0.018,'strokeMm':0x140,'moveTimeSec':1.2,'gearRatio':0x3,'gearboxEfficiency':0.92,'servoEfficiency':0.88,'powerReserveFactor':1.25,'screwDiameterMm':0x10,'screwLeadMm':0x14,'gravity':9.81})},{'id':_0x48dc98(0x22a),'title':'Варіант\x202\x20—\x20середній\x20стіл,\x20точна\x20подача','data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x41,'frictionCoefficient':0.025,'strokeMm':0x1a4,'moveTimeSec':1.8,'gearRatio':0x4,'gearboxEfficiency':0.91,'servoEfficiency':0.86,'powerReserveFactor':1.2,'screwDiameterMm':0x14,'screwLeadMm':0x14,'gravity':9.81})},{'id':'variant-3','title':_0x48dc98(0xe4),'data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x5a,'frictionCoefficient':0.022,'strokeMm':0x258,'moveTimeSec':2.4,'gearRatio':0x5,'gearboxEfficiency':0.9,'servoEfficiency':0.86,'powerReserveFactor':1.25,'screwDiameterMm':0x19,'screwLeadMm':0x19,'gravity':9.81})},{'id':_0x48dc98(0x1dc),'title':_0x48dc98(0x251),'data':Object['freeze']({'tableMassKg':0x2d,'frictionCoefficient':0.03,'strokeMm':0xfa,'moveTimeSec':1.4,'gearRatio':0x4,'gearboxEfficiency':0.9,'servoEfficiency':0.85,'powerReserveFactor':1.3,'screwDiameterMm':0x10,'screwLeadMm':0xa,'gravity':9.81})},{'id':'variant-5','title':_0x48dc98(0x191),'data':Object['freeze']({'tableMassKg':0x46,'frictionCoefficient':0.02,'strokeMm':0x2bc,'moveTimeSec':0x3,'gearRatio':0x3,'gearboxEfficiency':0.92,'servoEfficiency':0.87,'powerReserveFactor':1.2,'screwDiameterMm':0x19,'screwLeadMm':0x19,'gravity':9.81})},{'id':_0x48dc98(0x236),'title':'Варіант\x206\x20—\x20легка\x20вісь\x20з\x20великим\x20ходом\x20гвинта','data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x1c,'frictionCoefficient':0.016,'strokeMm':0x1c2,'moveTimeSec':1.6,'gearRatio':0x2,'gearboxEfficiency':0.93,'servoEfficiency':0.88,'powerReserveFactor':1.2,'screwDiameterMm':0x10,'screwLeadMm':0x20,'gravity':9.81})},{'id':_0x48dc98(0x215),'title':_0x48dc98(0x232),'data':Object['freeze']({'tableMassKg':0x78,'frictionCoefficient':0.024,'strokeMm':0x1f4,'moveTimeSec':2.6,'gearRatio':0x5,'gearboxEfficiency':0.89,'servoEfficiency':0.85,'powerReserveFactor':1.3,'screwDiameterMm':0x20,'screwLeadMm':0x14,'gravity':9.81})},{'id':'variant-8','title':_0x48dc98(0xca),'data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x37,'frictionCoefficient':0.019,'strokeMm':0x12c,'moveTimeSec':1.3,'gearRatio':0x2,'gearboxEfficiency':0.94,'servoEfficiency':0.88,'powerReserveFactor':1.2,'screwDiameterMm':0x14,'screwLeadMm':0x10,'gravity':9.81})},{'id':_0x48dc98(0x119),'title':_0x48dc98(0x277),'data':Object['freeze']({'tableMassKg':0x96,'frictionCoefficient':0.028,'strokeMm':0x190,'moveTimeSec':3.2,'gearRatio':0x6,'gearboxEfficiency':0.88,'servoEfficiency':0.84,'powerReserveFactor':1.35,'screwDiameterMm':0x20,'screwLeadMm':0xa,'gravity':9.81})},{'id':_0x48dc98(0x1c2),'title':_0x48dc98(0xfd),'data':Object[_0x48dc98(0xbe)]({'tableMassKg':0x28,'frictionCoefficient':0.017,'strokeMm':0x226,'moveTimeSec':0x2,'gearRatio':0x2,'gearboxEfficiency':0.93,'servoEfficiency':0.88,'powerReserveFactor':1.2,'screwDiameterMm':0x14,'screwLeadMm':0x19,'gravity':9.81})}]),VARIANT_STORAGE_KEY=_0x48dc98(0x12e);function getInitialTaskVariant(){const _0x6481fc=_0x48dc98;try{const _0x86210b=window['localStorage'][_0x6481fc(0x147)](VARIANT_STORAGE_KEY),_0x137030=TASK_VARIANTS[_0x6481fc(0x1b8)](_0x48166b=>_0x48166b['id']===_0x86210b);return _0x137030||TASK_VARIANTS[0x0];}catch(_0x197e8c){return TASK_VARIANTS[0x0];}}const INITIAL_TASK_VARIANT=getInitialTaskVariant();let SOURCE_DATA={...INITIAL_TASK_VARIANT[_0x48dc98(0x103)]};const LIMITS=Object[_0x48dc98(0xbe)]({'criticalLow':0.8,'warningLow':0.995,'idealHigh':1.5,'warningHigh':2.5,'speedCriticalLow':0.55,'speedWarningLow':0.85,'speedIdealHigh':1.18,'speedWarningHigh':1.55,'damageHeatSeconds':0x5,'mechanicalDamageSpeed':2.5}),MACHINE_COLORS=Object['freeze']({'base':0x64748b,'rail':0x334155,'table':0xfacc15,'tableSide':0xd97706,'screw':0xf97316,'gearbox':0x9ca3af,'motor':0x2563eb,'motorHot':0xef4444,'motorBurned':0x111827,'bearing':0x475569,'warning':0xf59e0b,'danger':0xef4444});class ServoSystemModel{constructor(_0x5c948d){this['sourceData']={..._0x5c948d};}['setSourceData'](_0x35f7df){const _0x3e0c86=_0x48dc98;this[_0x3e0c86(0x1bb)]={..._0x35f7df};}[_0x48dc98(0xec)](){const _0x3df564=_0x48dc98,_0x2aa1ed=this[_0x3df564(0x1bb)],_0x3a95fb=_0x2aa1ed[_0x3df564(0x271)]/0x3e8,_0x262e37=_0x2aa1ed[_0x3df564(0x1ba)]/0x3e8,_0x495ad2=_0x2aa1ed[_0x3df564(0x175)]*_0x2aa1ed[_0x3df564(0x20a)]*_0x2aa1ed[_0x3df564(0x1c3)],_0x15f063=0x4*_0x3a95fb/Math['pow'](_0x2aa1ed[_0x3df564(0x1a0)],0x2),_0xd11861=_0x2aa1ed['tableMassKg']*_0x15f063,_0x2251f3=_0x495ad2+_0xd11861,_0x4f6876=_0x2251f3*_0x262e37/(0x2*Math['PI']),_0x3c441c=_0x4f6876/(_0x2aa1ed[_0x3df564(0x10d)]*_0x2aa1ed[_0x3df564(0x1a1)]*_0x2aa1ed[_0x3df564(0x1e0)])*_0x2aa1ed[_0x3df564(0x1a9)],_0x1c2cb6=_0x3a95fb/_0x2aa1ed[_0x3df564(0x1a0)],_0x75d0ce=_0x1c2cb6/_0x262e37,_0x2a55d8=_0x75d0ce*0x3c,_0x1b1b21=_0x2a55d8*_0x2aa1ed[_0x3df564(0x10d)],_0x111719=_0x3c441c*(0x2*Math['PI']*_0x1b1b21/0x3c),_0x10dde8=roundTo(_0x3c441c,0x4),_0x3876fb=roundTo(_0x1b1b21,0x0),_0x513ec7=roundTo(_0x111719,0x2);return{'frictionForceN':_0x495ad2,'accelerationMps2':_0x15f063,'accelerationForceN':_0xd11861,'totalForceN':_0x2251f3,'screwLeadM':_0x262e37,'screwTorqueNm':_0x4f6876,'motorTorqueNm':_0x10dde8,'linearSpeedMps':_0x1c2cb6,'screwRpm':_0x2a55d8,'motorRpm':_0x3876fb,'motorPowerW':_0x513ec7};}[_0x48dc98(0x17b)](_0x574d56){const _0x3bb414=_0x48dc98,_0x17ab87=this['calculateRequirements'](),_0x40efe7=safeRatio(_0x574d56[_0x3bb414(0xb5)],_0x17ab87[_0x3bb414(0x228)]),_0x100109=safeRatio(_0x574d56['powerW'],_0x17ab87[_0x3bb414(0x254)]),_0x25a4e7=safeRatio(_0x574d56[_0x3bb414(0xdd)],_0x17ab87[_0x3bb414(0x1fb)]),_0x269810=Math[_0x3bb414(0x168)](_0x40efe7,_0x100109),_0x42e4ea=[];let _0x1a818c=_0x3bb414(0x1ca),_0x3055c0='ok',_0x4cc0dd=clamp(_0x25a4e7,0.18,2.7),_0x42cf5a=0x0,_0x4d3e16=0x0;if(_0x40efe7<LIMITS[_0x3bb414(0x265)]||_0x100109<LIMITS[_0x3bb414(0x265)])_0x1a818c=_0x3bb414(0xb9),_0x3055c0=_0x3bb414(0x1e5),_0x4cc0dd=clamp(Math['min'](_0x25a4e7,_0x269810)*0.65,0.08,0.75),_0x42cf5a=clamp(1.25-_0x269810,0.35,1.35),_0x42e4ea['push']({'type':_0x3bb414(0x1e5),'text':_0x3bb414(0x26b)});else{if(_0x40efe7<LIMITS[_0x3bb414(0xd6)]||_0x100109<LIMITS[_0x3bb414(0xd6)])_0x1a818c='weak',_0x3055c0=_0x3bb414(0x1af),_0x4cc0dd=clamp(Math[_0x3bb414(0x168)](_0x25a4e7,_0x269810)*0.8,0.35,0.95),_0x42cf5a=0.2,_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1af),'text':_0x3bb414(0x148)});else{if(_0x40efe7>LIMITS[_0x3bb414(0x110)]||_0x100109>LIMITS[_0x3bb414(0x110)]||_0x25a4e7>LIMITS[_0x3bb414(0x121)])_0x1a818c='mechanicalDamage',_0x3055c0=_0x3bb414(0x1e5),_0x4cc0dd=clamp(Math[_0x3bb414(0x120)](_0x25a4e7,2.2),1.8,3.2),_0x4d3e16=clamp(Math[_0x3bb414(0x120)](_0x40efe7,_0x100109,_0x25a4e7)/0x3,0.7,0x2),_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1e5),'text':'Параметри\x20надмірно\x20завеликі.\x20Модель\x20показує\x20різкий\x20ударний\x20рух\x20і\x20ризик\x20механічного\x20пошкодження\x20вузлів.'});else(_0x40efe7>LIMITS['idealHigh']||_0x100109>LIMITS['idealHigh'])&&(_0x1a818c=_0x3bb414(0x178),_0x3055c0=_0x3bb414(0x1af),_0x4cc0dd=clamp(_0x25a4e7,0.65,1.7),_0x4d3e16=clamp(Math[_0x3bb414(0x120)](_0x40efe7,_0x100109)-LIMITS[_0x3bb414(0x214)],0.15,0.9),_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1af),'text':'Запас\x20занадто\x20великий\x20для\x20навчальної\x20задачі.\x20Система\x20працює,\x20але\x20може\x20бути\x20дорожчою,\x20різкішою\x20та\x20вимагати\x20точнішого\x20налаштування.'}));}}if(_0x25a4e7<LIMITS[_0x3bb414(0xf9)]){_0x3055c0=_0x3055c0==='danger'?_0x3bb414(0x1e5):_0x3bb414(0x1af);if(_0x1a818c===_0x3bb414(0x1ca))_0x1a818c='slow';_0x4cc0dd=clamp(_0x4cc0dd,0.16,0.58),_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1af),'text':_0x3bb414(0x187)});}else{if(_0x25a4e7<LIMITS[_0x3bb414(0x189)]){_0x3055c0=_0x3055c0==='danger'?_0x3bb414(0x1e5):'warn';if(_0x1a818c===_0x3bb414(0x1ca))_0x1a818c=_0x3bb414(0xac);_0x42e4ea['push']({'type':_0x3bb414(0x1af),'text':_0x3bb414(0xb6)});}else{if(_0x25a4e7>LIMITS['speedWarningHigh']){_0x3055c0=_0x3055c0===_0x3bb414(0x1e5)?_0x3bb414(0x1e5):_0x3bb414(0x1af);if(_0x1a818c==='normal')_0x1a818c=_0x3bb414(0x197);_0x4cc0dd=clamp(_0x4cc0dd,1.35,2.35),_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1af),'text':_0x3bb414(0x139)});}else{if(_0x25a4e7>LIMITS[_0x3bb414(0x82)]){_0x3055c0=_0x3055c0===_0x3bb414(0x1e5)?_0x3bb414(0x1e5):_0x3bb414(0x1af);if(_0x1a818c===_0x3bb414(0x1ca))_0x1a818c=_0x3bb414(0x197);_0x42e4ea[_0x3bb414(0x15a)]({'type':_0x3bb414(0x1af),'text':_0x3bb414(0x1cd)});}}}}return _0x42e4ea[_0x3bb414(0xf1)]===0x0&&_0x42e4ea[_0x3bb414(0x15a)]({'type':'ok','text':_0x3bb414(0x134)}),{'required':_0x17ab87,'selection':_0x574d56,'ratios':{'torqueRatio':_0x40efe7,'powerRatio':_0x100109,'speedRatio':_0x25a4e7},'mode':_0x1a818c,'severity':_0x3055c0,'tableSpeedFactor':_0x4cc0dd,'heatRate':_0x42cf5a,'mechanicalStress':_0x4d3e16,'messages':_0x42e4ea};}}class MachineScene{constructor(_0x38a491){const _0x26ae16=_0x48dc98;this['canvas']=_0x38a491,this['clock']=new _0x28acce[(_0x26ae16(0x118))](),this[_0x26ae16(0x146)]=new _0x28acce[(_0x26ae16(0x1b3))](),this[_0x26ae16(0x146)]['background']=null,this['camera']=new _0x28acce[(_0x26ae16(0x192))](0x2d,0x1,0.1,0x78),this[_0x26ae16(0xe8)]=new _0x28acce[(_0x26ae16(0x15f))]({'canvas':_0x38a491,'antialias':!![],'alpha':!![],'powerPreference':_0x26ae16(0x143)}),this[_0x26ae16(0xe8)][_0x26ae16(0x27c)](Math[_0x26ae16(0x168)](window[_0x26ae16(0xcc)],0x2)),this[_0x26ae16(0xe8)][_0x26ae16(0x99)]=_0x28acce[_0x26ae16(0xe2)],this[_0x26ae16(0xe8)][_0x26ae16(0x245)]['enabled']=!![],this['renderer'][_0x26ae16(0x245)]['type']=_0x28acce[_0x26ae16(0x163)],this[_0x26ae16(0x229)]=new OrbitControls(this[_0x26ae16(0x238)],this['renderer'][_0x26ae16(0x22c)]),this[_0x26ae16(0x229)]['enableDamping']=!![],this[_0x26ae16(0x229)][_0x26ae16(0xe0)]=0.08,this['controls'][_0x26ae16(0x21b)]=0x4,this[_0x26ae16(0x229)]['maxDistance']=0xf,this['controls'][_0x26ae16(0x1b5)]=Math['PI']*0.48,this[_0x26ae16(0x165)]=new _0x28acce[(_0x26ae16(0x89))](),this[_0x26ae16(0x146)][_0x26ae16(0x1c5)](this['machine']),this[_0x26ae16(0x24a)]=new _0x28acce[(_0x26ae16(0x259))](0x0,0x1,0x0),this[_0x26ae16(0x13a)]={},this[_0x26ae16(0x160)]=[],this[_0x26ae16(0x141)]=[],this[_0x26ae16(0x1db)]=[],this[_0x26ae16(0x283)]={'mode':_0x26ae16(0x109),'tableSpeedFactor':0x1,'heatRate':0x0,'mechanicalStress':0x0,'heat':0x0,'burned':![],'damaged':![],'running':![],'time':0x0,'strokeDirection':0x1,'tablePosition':-1.15},this['defaultMotorMaterial']=null,this['hotMotorMaterial']=null,this[_0x26ae16(0xf6)]=null,this[_0x26ae16(0x23d)](),this[_0x26ae16(0xd9)](),this[_0x26ae16(0xb7)](),this[_0x26ae16(0x246)](),this[_0x26ae16(0x128)](),this['resize'](),window[_0x26ae16(0x1e3)]('resize',()=>this[_0x26ae16(0xa3)]());}['setupCamera'](){const _0x4a8f2a=_0x48dc98;this[_0x4a8f2a(0x238)]['position'][_0x4a8f2a(0xf0)](8.24,8.04,6.56),this[_0x4a8f2a(0x229)]['target']['set'](0.1,0.6,0x0),this[_0x4a8f2a(0x229)][_0x4a8f2a(0x25a)]();}['resetCamera'](){const _0x3c0c6d=_0x48dc98;this[_0x3c0c6d(0x23d)]();}[_0x48dc98(0xd9)](){const _0x1fc46d=_0x48dc98,_0x57e83d=new _0x28acce[(_0x1fc46d(0xfc))](0xc7d2fe,0xf172a,1.9);this[_0x1fc46d(0x146)][_0x1fc46d(0x1c5)](_0x57e83d);const _0x892725=new _0x28acce[(_0x1fc46d(0x1f1))](0xffffff,2.4);_0x892725[_0x1fc46d(0x184)][_0x1fc46d(0xf0)](0x5,0x8,0x4),_0x892725[_0x1fc46d(0x20d)]=!![],_0x892725['shadow'][_0x1fc46d(0x281)][_0x1fc46d(0xf0)](0x800,0x800),_0x892725[_0x1fc46d(0x1ac)][_0x1fc46d(0x238)][_0x1fc46d(0xde)]=0.5,_0x892725['shadow'][_0x1fc46d(0x238)]['far']=0x1c,_0x892725[_0x1fc46d(0x1ac)][_0x1fc46d(0x238)][_0x1fc46d(0x11b)]=-0x8,_0x892725[_0x1fc46d(0x1ac)]['camera']['right']=0x8,_0x892725['shadow'][_0x1fc46d(0x238)][_0x1fc46d(0x116)]=0x8,_0x892725[_0x1fc46d(0x1ac)][_0x1fc46d(0x238)][_0x1fc46d(0x171)]=-0x8,this[_0x1fc46d(0x146)][_0x1fc46d(0x1c5)](_0x892725);const _0x27fb54=new _0x28acce[(_0x1fc46d(0x104))](0x38bdf8,0x23,0x12);_0x27fb54[_0x1fc46d(0x184)]['set'](-0x4,0x3,-0x4),this[_0x1fc46d(0x146)][_0x1fc46d(0x1c5)](_0x27fb54);}[_0x48dc98(0xb7)](){const _0x5eb8c5=_0x48dc98,_0x25add6=(_0x30eaea,_0xa1b83d=0.55,_0x1c3e21=0.25)=>new _0x28acce[(_0x5eb8c5(0x202))]({'color':_0x30eaea,'roughness':_0xa1b83d,'metalness':_0x1c3e21}),_0x15dc24=_0x25add6(MACHINE_COLORS['base'],0.7,0.15),_0x5803a5=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0x13f)],0.45,0.55),_0x1d9a70=_0x25add6(MACHINE_COLORS['table'],0.42,0.15),_0x50183e=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0x241)],0.5,0.1),_0x188549=_0x25add6(MACHINE_COLORS['screw'],0.34,0.55),_0x32525b=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0x14d)],0.38,0.55);this[_0x5eb8c5(0xbc)]=_0x25add6(MACHINE_COLORS['motor'],0.45,0.35),this[_0x5eb8c5(0x9a)]=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0xaa)],0.55,0.2),this['burnedMotorMaterial']=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0x224)],0.8,0.1);const _0x197793=_0x25add6(MACHINE_COLORS[_0x5eb8c5(0x255)],0.52,0.35),_0xbaab8f=new _0x28acce[(_0x5eb8c5(0x1a2))](new _0x28acce[(_0x5eb8c5(0xbf))](0x12,0x12),new _0x28acce[(_0x5eb8c5(0xb0))]({'color':0x0,'opacity':0.26}));_0xbaab8f[_0x5eb8c5(0x123)]['x']=-Math['PI']/0x2,_0xbaab8f['position']['y']=-0.02,_0xbaab8f[_0x5eb8c5(0x101)]=!![],this[_0x5eb8c5(0x146)][_0x5eb8c5(0x1c5)](_0xbaab8f);const _0x4b7ea1=this[_0x5eb8c5(0x284)](4.8,0.32,1.78,_0x15dc24,0x0,0.16,0x0);_0x4b7ea1['castShadow']=!![],_0x4b7ea1[_0x5eb8c5(0x101)]=!![],this['machine'][_0x5eb8c5(0x1c5)](_0x4b7ea1);const _0x257a16=this[_0x5eb8c5(0x284)](4.35,0.14,0.14,_0x5803a5,0x0,0.42,-0.54),_0x1c040b=this[_0x5eb8c5(0x284)](4.35,0.14,0.14,_0x5803a5,0x0,0.42,0.54);_0x257a16['castShadow']=_0x1c040b['castShadow']=!![],_0x257a16[_0x5eb8c5(0x101)]=_0x1c040b[_0x5eb8c5(0x101)]=!![],this[_0x5eb8c5(0x165)]['add'](_0x257a16,_0x1c040b);const _0x1f898f=new _0x28acce['Group']();_0x1f898f[_0x5eb8c5(0x184)]['set'](-1.15,0.85,0x0);const _0x808a19=this[_0x5eb8c5(0x284)](1.72,0.22,1.26,_0x1d9a70,0x0,0x0,0x0),_0x442c41=this[_0x5eb8c5(0x284)](1.78,0.12,0.16,_0x50183e,0x0,-0.17,0.67),_0xea6dd8=this['box'](1.78,0.12,0.16,_0x50183e,0x0,-0.17,-0.67),_0x988736=this[_0x5eb8c5(0x284)](0.48,0.22,0.28,_0x197793,-0.52,-0.36,-0.54),_0xa754a2=this[_0x5eb8c5(0x284)](0.48,0.22,0.28,_0x197793,-0.52,-0.36,0.54),_0x1f4677=this['box'](0.48,0.22,0.28,_0x197793,0.52,-0.36,-0.54),_0x54f606=this['box'](0.48,0.22,0.28,_0x197793,0.52,-0.36,0.54);_0x1f898f[_0x5eb8c5(0x1c5)](_0x808a19,_0x442c41,_0xea6dd8,_0x988736,_0xa754a2,_0x1f4677,_0x54f606),_0x1f898f[_0x5eb8c5(0x7f)](_0x4cf3b1=>{const _0x3357e4=_0x5eb8c5;_0x4cf3b1['isMesh']&&(_0x4cf3b1[_0x3357e4(0x20d)]=!![],_0x4cf3b1[_0x3357e4(0x101)]=!![]);}),this[_0x5eb8c5(0x165)][_0x5eb8c5(0x1c5)](_0x1f898f),this[_0x5eb8c5(0x13a)]['tableGroup']=_0x1f898f,this[_0x5eb8c5(0x13a)][_0x5eb8c5(0x170)]=_0x808a19;const _0x5ca613=this[_0x5eb8c5(0x86)](3.6,0.11,0x22,_0x188549);_0x5ca613[_0x5eb8c5(0x123)]['z']=Math['PI']/0x2,_0x5ca613[_0x5eb8c5(0x184)][_0x5eb8c5(0xf0)](0x0,0.56,0x0),_0x5ca613[_0x5eb8c5(0x20d)]=!![],this[_0x5eb8c5(0x165)]['add'](_0x5ca613),this[_0x5eb8c5(0x13a)][_0x5eb8c5(0x1da)]=_0x5ca613;const _0x2e6221=this[_0x5eb8c5(0x284)](0.32,0.34,0.34,_0x197793,-1.15,0.56,0x0);_0x2e6221[_0x5eb8c5(0x20d)]=!![],this[_0x5eb8c5(0x165)]['add'](_0x2e6221),this['parts'][_0x5eb8c5(0x14b)]=_0x2e6221;const _0x2f6848=new _0x28acce['Mesh'](new _0x28acce['CylinderGeometry'](0.22,0.22,0.22,0x20),_0x197793);_0x2f6848[_0x5eb8c5(0x123)]['z']=Math['PI']/0x2,_0x2f6848['position']['set'](-2.12,0.56,0x0),_0x2f6848[_0x5eb8c5(0x20d)]=!![],this[_0x5eb8c5(0x165)][_0x5eb8c5(0x1c5)](_0x2f6848);const _0x5bff31=new _0x28acce['Mesh'](new _0x28acce[(_0x5eb8c5(0x234))](0.24,0.24,0.28,0x20),_0x197793);_0x5bff31['rotation']['z']=Math['PI']/0x2,_0x5bff31[_0x5eb8c5(0x184)][_0x5eb8c5(0xf0)](2.05,0.56,0x0),_0x5bff31[_0x5eb8c5(0x20d)]=!![],this[_0x5eb8c5(0x165)][_0x5eb8c5(0x1c5)](_0x5bff31);const _0x43635e=this['box'](0.58,0.74,0.74,_0x32525b,2.52,0.62,0x0);_0x43635e[_0x5eb8c5(0x20d)]=!![],_0x43635e[_0x5eb8c5(0x101)]=!![],this[_0x5eb8c5(0x165)][_0x5eb8c5(0x1c5)](_0x43635e),this[_0x5eb8c5(0x13a)][_0x5eb8c5(0x14d)]=_0x43635e;const _0x34119c=new _0x28acce[(_0x5eb8c5(0x89))]();_0x34119c['position'][_0x5eb8c5(0xf0)](3.25,0.62,0x0);const _0x46ad48=new _0x28acce[(_0x5eb8c5(0x1a2))](new _0x28acce[(_0x5eb8c5(0x234))](0.36,0.36,0.92,0x30),this['defaultMotorMaterial']);_0x46ad48[_0x5eb8c5(0x123)]['z']=Math['PI']/0x2,_0x46ad48['castShadow']=!![],_0x46ad48[_0x5eb8c5(0x101)]=!![];const _0x147e58=new _0x28acce[(_0x5eb8c5(0x1a2))](new _0x28acce[(_0x5eb8c5(0x234))](0.38,0.38,0.08,0x30),_0x197793);_0x147e58[_0x5eb8c5(0x123)]['z']=Math['PI']/0x2,_0x147e58[_0x5eb8c5(0x184)]['x']=-0.5,_0x147e58[_0x5eb8c5(0x20d)]=!![];const _0x58b5b6=new _0x28acce[(_0x5eb8c5(0x1a2))](new _0x28acce[(_0x5eb8c5(0x234))](0.08,0.08,0.34,0x20),_0x188549);_0x58b5b6[_0x5eb8c5(0x123)]['z']=Math['PI']/0x2,_0x58b5b6[_0x5eb8c5(0x184)]['x']=-0.76,_0x58b5b6[_0x5eb8c5(0x20d)]=!![],_0x34119c[_0x5eb8c5(0x1c5)](_0x46ad48,_0x147e58,_0x58b5b6),this[_0x5eb8c5(0x165)][_0x5eb8c5(0x1c5)](_0x34119c),this[_0x5eb8c5(0x13a)]['motorGroup']=_0x34119c,this[_0x5eb8c5(0x13a)][_0x5eb8c5(0x188)]=_0x46ad48,this[_0x5eb8c5(0x13a)][_0x5eb8c5(0x180)]=_0x147e58,this[_0x5eb8c5(0x13a)]['shaft']=_0x58b5b6,this['createLabels']();}[_0x48dc98(0x262)](){const _0xe6532a=_0x48dc98,_0x296819=[{'text':'Стіл','position':[-1.2,1.38,-0.78]},{'text':'Напрямні','position':[-0.65,0.78,-0.98]},{'text':_0xe6532a(0x176),'position':[-0.38,0.92,0.32]},{'text':_0xe6532a(0xd1),'position':[2.5,1.26,-0.62]},{'text':_0xe6532a(0xd5),'position':[3.32,1.12,0.58]}];_0x296819['forEach'](_0x7b9fe6=>{const _0x222c6a=_0xe6532a,_0xd864d1=this[_0x222c6a(0x26a)](_0x7b9fe6[_0x222c6a(0x248)]);_0xd864d1[_0x222c6a(0x184)][_0x222c6a(0xf0)](..._0x7b9fe6[_0x222c6a(0x184)]),this[_0x222c6a(0x165)][_0x222c6a(0x1c5)](_0xd864d1);});}[_0x48dc98(0x26a)](_0x64b484){const _0x5cd4c4=_0x48dc98,_0xb9d119=document[_0x5cd4c4(0xad)](_0x5cd4c4(0x1cb));_0xb9d119[_0x5cd4c4(0x193)]=0x200,_0xb9d119[_0x5cd4c4(0x132)]=0xa0;const _0x44b56b=_0xb9d119[_0x5cd4c4(0x20f)]('2d');_0x44b56b['clearRect'](0x0,0x0,_0xb9d119[_0x5cd4c4(0x193)],_0xb9d119[_0x5cd4c4(0x132)]),_0x44b56b[_0x5cd4c4(0x1f9)]=_0x5cd4c4(0x11f),roundRect(_0x44b56b,0x10,0x1c,0x1e0,0x5e,0x1a),_0x44b56b['fill'](),_0x44b56b[_0x5cd4c4(0x260)]=_0x5cd4c4(0x1f0),_0x44b56b[_0x5cd4c4(0x26d)]=0x3,_0x44b56b['stroke'](),_0x44b56b[_0x5cd4c4(0x1f9)]='#e5e7eb',_0x44b56b[_0x5cd4c4(0x11c)]=_0x5cd4c4(0x169),_0x44b56b[_0x5cd4c4(0x19b)]=_0x5cd4c4(0x10a),_0x44b56b[_0x5cd4c4(0xdb)]=_0x5cd4c4(0x140),_0x44b56b[_0x5cd4c4(0x207)](_0x64b484,0x100,0x4b);const _0x56749f=new _0x28acce[(_0x5cd4c4(0xc5))](_0xb9d119);_0x56749f[_0x5cd4c4(0x177)]=_0x28acce[_0x5cd4c4(0xe2)];const _0x71f794=new _0x28acce[(_0x5cd4c4(0xa7))]({'map':_0x56749f,'transparent':!![],'depthWrite':![]}),_0x4bf9de=new _0x28acce['Sprite'](_0x71f794);return _0x4bf9de[_0x5cd4c4(0xc7)][_0x5cd4c4(0xf0)](1.08,0.34,0x1),_0x4bf9de;}['createLeadScrew'](_0x48d139,_0x19f479,_0x239737,_0x19b6e6){const _0x5b51c2=_0x48dc98,_0x95a521=new _0x28acce[(_0x5b51c2(0x89))](),_0x5a85cc=new _0x28acce['Mesh'](new _0x28acce['CylinderGeometry'](_0x19f479*0.52,_0x19f479*0.52,_0x48d139,0x30),_0x19b6e6);_0x5a85cc['castShadow']=!![],_0x95a521[_0x5b51c2(0x1c5)](_0x5a85cc);const _0x4fe5da=[],_0x45427c=_0x239737*0x16;for(let _0x116fde=0x0;_0x116fde<=_0x45427c;_0x116fde+=0x1){const _0x49ae40=_0x116fde/_0x45427c,_0x29fa31=_0x49ae40*Math['PI']*0x2*_0x239737,_0x16970f=-_0x48d139/0x2+_0x49ae40*_0x48d139;_0x4fe5da['push'](new _0x28acce[(_0x5b51c2(0x259))](Math[_0x5b51c2(0x258)](_0x29fa31)*_0x19f479,_0x16970f,Math[_0x5b51c2(0x14c)](_0x29fa31)*_0x19f479));}const _0x556c96=new _0x28acce[(_0x5b51c2(0x1c9))](_0x4fe5da),_0x4ae962=new _0x28acce['Mesh'](new _0x28acce[(_0x5b51c2(0x174))](_0x556c96,_0x45427c,_0x19f479*0.18,0x9,![]),_0x19b6e6);return _0x4ae962[_0x5b51c2(0x20d)]=!![],_0x95a521[_0x5b51c2(0x1c5)](_0x4ae962),_0x95a521;}[_0x48dc98(0x246)](){const _0x2a923b=_0x48dc98,_0x5ef335=new _0x28acce[(_0x2a923b(0xa7))]({'map':this[_0x2a923b(0xbd)]('smoke'),'transparent':!![],'opacity':0x0,'depthWrite':![]});for(let _0x4c7eeb=0x0;_0x4c7eeb<0x36;_0x4c7eeb+=0x1){const _0x34b4ed=new _0x28acce[(_0x2a923b(0x16c))](_0x5ef335['clone']());_0x34b4ed[_0x2a923b(0x90)]=![],this[_0x2a923b(0x146)][_0x2a923b(0x1c5)](_0x34b4ed),this[_0x2a923b(0x160)][_0x2a923b(0x15a)]({'sprite':_0x34b4ed,'age':Math[_0x2a923b(0x9c)]()*0x2,'life':0x2+Math['random']()*0x2,'velocity':new _0x28acce['Vector3']((Math[_0x2a923b(0x9c)]()-0.5)*0.16,0.22+Math['random']()*0.26,(Math[_0x2a923b(0x9c)]()-0.5)*0.16),'baseScale':0.18+Math[_0x2a923b(0x9c)]()*0.2});}}[_0x48dc98(0x128)](){const _0x500823=_0x48dc98,_0x4dbd03=new _0x28acce[(_0x500823(0xa7))]({'map':this[_0x500823(0xbd)](_0x500823(0x1b0)),'transparent':!![],'opacity':0x0,'depthWrite':![]});for(let _0x18735b=0x0;_0x18735b<0x22;_0x18735b+=0x1){const _0xff51b9=new _0x28acce[(_0x500823(0x16c))](_0x4dbd03['clone']());_0xff51b9[_0x500823(0x90)]=![],this[_0x500823(0x146)]['add'](_0xff51b9),this['sparkParticles'][_0x500823(0x15a)]({'sprite':_0xff51b9,'age':Math[_0x500823(0x9c)](),'life':0.35+Math[_0x500823(0x9c)]()*0.35,'velocity':new _0x28acce[(_0x500823(0x259))]((Math[_0x500823(0x9c)]()-0.5)*1.2,Math[_0x500823(0x9c)]()*0.8,(Math[_0x500823(0x9c)]()-0.5)*1.2)});}}[_0x48dc98(0xbd)](_0x3abfda){const _0x69b634=_0x48dc98,_0x1c1e9d=document[_0x69b634(0xad)](_0x69b634(0x1cb));_0x1c1e9d[_0x69b634(0x193)]=0x80,_0x1c1e9d[_0x69b634(0x132)]=0x80;const _0x17d8c4=_0x1c1e9d[_0x69b634(0x20f)]('2d'),_0xf76fc1=_0x17d8c4[_0x69b634(0x252)](0x40,0x40,0x4,0x40,0x40,0x3c);_0x3abfda==='spark'?(_0xf76fc1[_0x69b634(0x1e2)](0x0,'rgba(255,255,255,1)'),_0xf76fc1['addColorStop'](0.25,'rgba(251,191,36,0.95)'),_0xf76fc1[_0x69b634(0x1e2)](0x1,_0x69b634(0x19c))):(_0xf76fc1[_0x69b634(0x1e2)](0x0,_0x69b634(0x1f3)),_0xf76fc1[_0x69b634(0x1e2)](0.45,'rgba(148,163,184,0.34)'),_0xf76fc1[_0x69b634(0x1e2)](0x1,_0x69b634(0x1e7)));_0x17d8c4[_0x69b634(0x1f9)]=_0xf76fc1,_0x17d8c4[_0x69b634(0x243)](0x0,0x0,0x80,0x80);const _0x1c2d99=new _0x28acce[(_0x69b634(0xc5))](_0x1c1e9d);return _0x1c2d99[_0x69b634(0x177)]=_0x28acce[_0x69b634(0xe2)],_0x1c2d99;}[_0x48dc98(0x284)](_0x36a785,_0x44e4bf,_0x2d0e21,_0x191e99,_0x2735a0,_0x8dbe82,_0x5e55eb){const _0x4d8f05=_0x48dc98,_0x22fffb=new _0x28acce[(_0x4d8f05(0x1c7))](_0x36a785,_0x44e4bf,_0x2d0e21),_0x441e67=new _0x28acce[(_0x4d8f05(0x1a2))](_0x22fffb,_0x191e99);return _0x441e67[_0x4d8f05(0x184)][_0x4d8f05(0xf0)](_0x2735a0,_0x8dbe82,_0x5e55eb),_0x441e67;}['setEvaluation'](_0x5ee551){const _0x2c6cb1=_0x48dc98;this[_0x2c6cb1(0x283)][_0x2c6cb1(0xae)]=!![],this[_0x2c6cb1(0x283)]['mode']=_0x5ee551[_0x2c6cb1(0xa4)],this[_0x2c6cb1(0x283)][_0x2c6cb1(0x1cf)]=_0x5ee551[_0x2c6cb1(0x1cf)],this[_0x2c6cb1(0x283)][_0x2c6cb1(0xbb)]=_0x5ee551[_0x2c6cb1(0xbb)],this[_0x2c6cb1(0x283)][_0x2c6cb1(0xfe)]=_0x5ee551[_0x2c6cb1(0xfe)],this[_0x2c6cb1(0x283)][_0x2c6cb1(0xd7)]=_0x5ee551['mode']===_0x2c6cb1(0xb9)?Math[_0x2c6cb1(0x120)](this['state'][_0x2c6cb1(0xd7)],0.22):0x0,this[_0x2c6cb1(0x283)]['burned']=![],this[_0x2c6cb1(0x283)][_0x2c6cb1(0x185)]=![],this[_0x2c6cb1(0x22e)](),this[_0x2c6cb1(0x12c)]();}[_0x48dc98(0x247)](){const _0x1120eb=_0x48dc98;this[_0x1120eb(0x283)]['mode']=_0x1120eb(0x109),this[_0x1120eb(0x283)][_0x1120eb(0xae)]=![],this[_0x1120eb(0x283)][_0x1120eb(0xd7)]=0x0,this[_0x1120eb(0x283)][_0x1120eb(0xfa)]=![],this['state'][_0x1120eb(0x185)]=![],this[_0x1120eb(0x283)][_0x1120eb(0xfe)]=0x0,this[_0x1120eb(0x22e)](),this[_0x1120eb(0x13a)][_0x1120eb(0xa9)][_0x1120eb(0x184)]['x']=-1.15,this['parts'][_0x1120eb(0x14b)][_0x1120eb(0x184)]['x']=-1.15,this[_0x1120eb(0x13a)][_0x1120eb(0xf3)]['rotation']['x']=0x0,this[_0x1120eb(0x13a)]['gearbox']['rotation']['x']=0x0,this[_0x1120eb(0x12c)](),this['smokeParticles'][_0x1120eb(0xf7)](_0x33bf4d=>{const _0xca5eb8=_0x1120eb;_0x33bf4d[_0xca5eb8(0xd8)][_0xca5eb8(0x90)]=![],_0x33bf4d[_0xca5eb8(0xd8)][_0xca5eb8(0x270)]['opacity']=0x0;}),this['sparkParticles'][_0x1120eb(0xf7)](_0xea7cc5=>{const _0x304563=_0x1120eb;_0xea7cc5['sprite'][_0x304563(0x90)]=![],_0xea7cc5['sprite']['material'][_0x304563(0x80)]=0x0;});}[_0x48dc98(0x22e)](){const _0x8d10ed=_0x48dc98;this[_0x8d10ed(0x1db)][_0x8d10ed(0xf7)](_0x466c5d=>{const _0x3a84c1=_0x8d10ed;_0x466c5d[_0x3a84c1(0x221)]?.[_0x3a84c1(0x24e)](_0x466c5d),_0x466c5d[_0x3a84c1(0x114)]?.[_0x3a84c1(0x24f)](),_0x466c5d[_0x3a84c1(0x270)]?.['dispose']();}),this[_0x8d10ed(0x1db)]=[],this[_0x8d10ed(0x13a)][_0x8d10ed(0x170)]&&(this[_0x8d10ed(0x13a)][_0x8d10ed(0x170)][_0x8d10ed(0x123)]['z']=0x0,this[_0x8d10ed(0x13a)][_0x8d10ed(0x170)][_0x8d10ed(0x123)]['x']=0x0);}[_0x48dc98(0x12c)](){const _0x4ea8ee=_0x48dc98;if(this[_0x4ea8ee(0x283)][_0x4ea8ee(0xfa)]){this[_0x4ea8ee(0x13a)][_0x4ea8ee(0x188)][_0x4ea8ee(0x270)]=this[_0x4ea8ee(0xf6)];return;}if(this[_0x4ea8ee(0x283)][_0x4ea8ee(0xd7)]>0.38||this['state'][_0x4ea8ee(0xa4)]===_0x4ea8ee(0xb9)){this[_0x4ea8ee(0x13a)][_0x4ea8ee(0x188)][_0x4ea8ee(0x270)]=this[_0x4ea8ee(0x9a)];const _0x223803=new _0x28acce[(_0x4ea8ee(0x12f))](0x7f1d1d)[_0x4ea8ee(0x1b6)](clamp(this[_0x4ea8ee(0x283)]['heat'],0.15,0x1));this['parts'][_0x4ea8ee(0x188)][_0x4ea8ee(0x270)][_0x4ea8ee(0x164)]=_0x223803;return;}this[_0x4ea8ee(0x13a)][_0x4ea8ee(0x188)][_0x4ea8ee(0x270)]=this[_0x4ea8ee(0xbc)],this[_0x4ea8ee(0x13a)][_0x4ea8ee(0x188)][_0x4ea8ee(0x270)]['emissive']=new _0x28acce[(_0x4ea8ee(0x12f))](0x0);}[_0x48dc98(0x21d)](){const _0x4158aa=_0x48dc98;if(this[_0x4158aa(0x283)][_0x4158aa(0x185)])return;this[_0x4158aa(0x283)][_0x4158aa(0x185)]=!![],this['parts']['tableTop'][_0x4158aa(0x123)]['z']=0.08,this[_0x4158aa(0x13a)][_0x4158aa(0x170)][_0x4158aa(0x123)]['x']=-0.04;const _0x1fef3a=new _0x28acce[(_0x4158aa(0x223))]({'color':MACHINE_COLORS[_0x4158aa(0x1e5)],'linewidth':0x2}),_0x4a95f5=[[[-0.42,0.12,0.02],[-0.2,0.14,0.12],[-0.05,0.12,0.02],[0.2,0.13,0.16]],[[0.36,0.13,-0.2],[0.18,0.14,-0.04],[0.31,0.13,0.08],[0.05,0.14,0.22]],[[-0.68,0.13,-0.24],[-0.5,0.15,-0.1],[-0.61,0.13,0.04]]];_0x4a95f5[_0x4158aa(0xf7)](_0x5bbe0a=>{const _0x2b7000=_0x4158aa,_0x31b273=new _0x28acce[(_0x2b7000(0x280))]()[_0x2b7000(0x18a)](_0x5bbe0a[_0x2b7000(0x91)](_0x5a6332=>new _0x28acce[(_0x2b7000(0x259))](..._0x5a6332))),_0x113e0a=new _0x28acce['Line'](_0x31b273,_0x1fef3a[_0x2b7000(0x206)]());this['parts'][_0x2b7000(0x170)]['add'](_0x113e0a),this[_0x2b7000(0x1db)][_0x2b7000(0x15a)](_0x113e0a);});}[_0x48dc98(0x14f)](){const _0x2be82e=_0x48dc98;if(this[_0x2be82e(0x283)]['burned'])return;this['state'][_0x2be82e(0xfa)]=!![],this[_0x2be82e(0x283)]['running']=![],this[_0x2be82e(0x12c)](),window[_0x2be82e(0x20e)](new CustomEvent('servo:motor-burned'));}[_0x48dc98(0x10f)](_0x5f28e8){const _0x5133e2=_0x48dc98,_0x1fe975=this[_0x5133e2(0x283)][_0x5133e2(0xa4)]===_0x5133e2(0xb9)||this[_0x5133e2(0x283)][_0x5133e2(0xfa)],_0xa7cfd5=new _0x28acce[(_0x5133e2(0x259))](3.23,1.02,0.03),_0x5ea503=this[_0x5133e2(0x283)][_0x5133e2(0xfa)]?0x1:clamp(this[_0x5133e2(0x283)][_0x5133e2(0xd7)],0x0,0x1);this[_0x5133e2(0x160)][_0x5133e2(0xf7)](_0x557d67=>{const _0x4018da=_0x5133e2;if(!_0x1fe975||_0x5ea503<=0.02){_0x557d67[_0x4018da(0xd8)][_0x4018da(0x90)]=![],_0x557d67[_0x4018da(0xd8)]['material'][_0x4018da(0x80)]=0x0;return;}_0x557d67[_0x4018da(0xd8)][_0x4018da(0x90)]=!![],_0x557d67['age']+=_0x5f28e8*(0.8+_0x5ea503*1.2);_0x557d67[_0x4018da(0x1a6)]>_0x557d67['life']&&(_0x557d67[_0x4018da(0x1a6)]=0x0,_0x557d67[_0x4018da(0x1c6)]=0x2+Math[_0x4018da(0x9c)]()*2.5,_0x557d67[_0x4018da(0x1a5)]['set']((Math[_0x4018da(0x9c)]()-0.5)*0.18,0.22+Math[_0x4018da(0x9c)]()*0.32,(Math[_0x4018da(0x9c)]()-0.5)*0.18),_0x557d67[_0x4018da(0xd8)][_0x4018da(0x184)]['copy'](_0xa7cfd5)[_0x4018da(0x1c5)](new _0x28acce[(_0x4018da(0x259))]((Math[_0x4018da(0x9c)]()-0.5)*0.22,0x0,(Math[_0x4018da(0x9c)]()-0.5)*0.22)));_0x557d67[_0x4018da(0xd8)][_0x4018da(0x184)][_0x4018da(0x127)](_0x557d67[_0x4018da(0x1a5)],_0x5f28e8);const _0xb97588=_0x557d67[_0x4018da(0x1a6)]/_0x557d67['life'],_0x2f57e8=_0x557d67[_0x4018da(0x1aa)]*(0x1+_0xb97588*2.6)*(0.7+_0x5ea503*0.65);_0x557d67[_0x4018da(0xd8)][_0x4018da(0xc7)][_0x4018da(0xf0)](_0x2f57e8,_0x2f57e8,_0x2f57e8),_0x557d67[_0x4018da(0xd8)][_0x4018da(0x270)][_0x4018da(0x80)]=clamp((0x1-_0xb97588)*_0x5ea503*0.7,0x0,0.72);});}[_0x48dc98(0x1d4)](_0x23926b){const _0x3f086a=_0x48dc98,_0x1c117c=this[_0x3f086a(0x283)][_0x3f086a(0xa4)]===_0x3f086a(0x105)&&this[_0x3f086a(0x283)][_0x3f086a(0x185)],_0x48f3e0=new _0x28acce[(_0x3f086a(0x259))](2.2,0.72,0x0);this['sparkParticles'][_0x3f086a(0xf7)](_0x4105c2=>{const _0x56407d=_0x3f086a;if(!_0x1c117c){_0x4105c2[_0x56407d(0xd8)][_0x56407d(0x90)]=![],_0x4105c2['sprite']['material'][_0x56407d(0x80)]=0x0;return;}_0x4105c2['sprite'][_0x56407d(0x90)]=!![],_0x4105c2[_0x56407d(0x1a6)]+=_0x23926b*1.8;_0x4105c2[_0x56407d(0x1a6)]>_0x4105c2[_0x56407d(0x1c6)]&&(_0x4105c2['age']=0x0,_0x4105c2[_0x56407d(0x1c6)]=0.28+Math[_0x56407d(0x9c)]()*0.36,_0x4105c2[_0x56407d(0x1a5)][_0x56407d(0xf0)]((Math['random']()-0.4)*1.2,Math[_0x56407d(0x9c)]()*0.9,(Math[_0x56407d(0x9c)]()-0.5)*1.1),_0x4105c2[_0x56407d(0xd8)][_0x56407d(0x184)][_0x56407d(0x27d)](_0x48f3e0)['add'](new _0x28acce['Vector3'](Math[_0x56407d(0x9c)]()*0.18,(Math[_0x56407d(0x9c)]()-0.5)*0.18,(Math[_0x56407d(0x9c)]()-0.5)*0.18)));_0x4105c2[_0x56407d(0xd8)][_0x56407d(0x184)][_0x56407d(0x127)](_0x4105c2[_0x56407d(0x1a5)],_0x23926b),_0x4105c2[_0x56407d(0x1a5)]['y']-=_0x23926b*1.35;const _0x2e93db=_0x4105c2[_0x56407d(0x1a6)]/_0x4105c2[_0x56407d(0x1c6)],_0x288bb1=0.08*(0x1-_0x2e93db*0.4);_0x4105c2['sprite'][_0x56407d(0xc7)]['set'](_0x288bb1,_0x288bb1,_0x288bb1),_0x4105c2[_0x56407d(0xd8)][_0x56407d(0x270)][_0x56407d(0x80)]=clamp(0x1-_0x2e93db,0x0,0x1);});}[_0x48dc98(0xa3)](){const _0x281675=_0x48dc98,_0x4dfab2=this[_0x281675(0x1cb)][_0x281675(0x267)]||window[_0x281675(0x10c)],_0x3f2273=this['canvas'][_0x281675(0x1d5)]||window[_0x281675(0x208)];this[_0x281675(0x238)][_0x281675(0x126)]=_0x4dfab2/_0x3f2273,this[_0x281675(0x238)][_0x281675(0x8f)](),this[_0x281675(0xe8)][_0x281675(0x13d)](_0x4dfab2,_0x3f2273,![]);}[_0x48dc98(0x1ae)](){const _0x4d0cf6=_0x48dc98,_0x1daaa7=-1.15,_0x2f7ade=1.15,_0x4721d7=clamp((this[_0x4d0cf6(0x283)][_0x4d0cf6(0x1be)]-_0x1daaa7)/(_0x2f7ade-_0x1daaa7),0x0,0x1),_0x3a5690=this['state']['strokeDirection']>=0x0?_0x4721d7:0x1-_0x4721d7;return{'isRunning':this['state'][_0x4d0cf6(0xae)]&&!this[_0x4d0cf6(0x283)][_0x4d0cf6(0xfa)],'normalizedPosition':_0x4721d7,'normalizedCycleTime':_0x3a5690,'direction':this[_0x4d0cf6(0x283)][_0x4d0cf6(0x15d)],'mode':this[_0x4d0cf6(0x283)][_0x4d0cf6(0xa4)]};}['animate'](){const _0x2033a3=_0x48dc98,_0x11b8fd=Math[_0x2033a3(0x168)](this[_0x2033a3(0xc9)][_0x2033a3(0xf5)](),0.05);this[_0x2033a3(0x283)][_0x2033a3(0xfb)]+=_0x11b8fd,this[_0x2033a3(0x229)][_0x2033a3(0x25a)](),this[_0x2033a3(0x25a)](_0x11b8fd),this[_0x2033a3(0xe8)][_0x2033a3(0xaf)](this[_0x2033a3(0x146)],this[_0x2033a3(0x238)]),requestAnimationFrame(()=>this[_0x2033a3(0x1ff)]());}['update'](_0x38fef8){const _0x541d7b=_0x48dc98,_0x6c93=0.92,_0x562420=_0x6c93*this[_0x541d7b(0x283)]['tableSpeedFactor'];this[_0x541d7b(0x283)][_0x541d7b(0xae)]&&!this['state'][_0x541d7b(0xfa)]&&(this[_0x541d7b(0x283)][_0x541d7b(0x1be)]+=this[_0x541d7b(0x283)][_0x541d7b(0x15d)]*_0x38fef8*_0x562420,this[_0x541d7b(0x283)][_0x541d7b(0x1be)]>1.15&&(this[_0x541d7b(0x283)]['tablePosition']=1.15,this[_0x541d7b(0x283)][_0x541d7b(0x15d)]=-0x1),this[_0x541d7b(0x283)][_0x541d7b(0x1be)]<-1.15&&(this[_0x541d7b(0x283)][_0x541d7b(0x1be)]=-1.15,this['state'][_0x541d7b(0x15d)]=0x1));const _0x30384b=this[_0x541d7b(0x283)][_0x541d7b(0xa4)]===_0x541d7b(0x178)||this[_0x541d7b(0x283)][_0x541d7b(0xa4)]===_0x541d7b(0x197)?Math[_0x541d7b(0x14c)](this[_0x541d7b(0x283)][_0x541d7b(0xfb)]*0x12)*0.012*(0x1+this['state'][_0x541d7b(0xfe)]):0x0,_0x5e781c=this[_0x541d7b(0x283)][_0x541d7b(0xa4)]==='mechanicalDamage'?Math[_0x541d7b(0x14c)](this[_0x541d7b(0x283)]['time']*0x2a)*0.025*(0x1+this['state'][_0x541d7b(0xfe)]):_0x30384b;this['parts'][_0x541d7b(0xa9)][_0x541d7b(0x184)]['x']=this[_0x541d7b(0x283)][_0x541d7b(0x1be)],this[_0x541d7b(0x13a)][_0x541d7b(0xa9)][_0x541d7b(0x184)]['z']=_0x5e781c,this[_0x541d7b(0x13a)][_0x541d7b(0x14b)][_0x541d7b(0x184)]['x']=this[_0x541d7b(0x283)][_0x541d7b(0x1be)];const _0x30201a=this[_0x541d7b(0x283)][_0x541d7b(0xae)]&&!this[_0x541d7b(0x283)][_0x541d7b(0xfa)]?_0x38fef8*_0x562420*0xc:0x0;this[_0x541d7b(0x13a)][_0x541d7b(0x1da)][_0x541d7b(0xea)](this['screwSpinAxis'],_0x30201a*this[_0x541d7b(0x283)][_0x541d7b(0x15d)]),this[_0x541d7b(0x13a)][_0x541d7b(0x1ab)]['rotation']['x']+=_0x30201a*1.8,this[_0x541d7b(0x13a)][_0x541d7b(0xf3)][_0x541d7b(0x123)]['x']=this[_0x541d7b(0x283)][_0x541d7b(0xa4)]===_0x541d7b(0x105)?Math[_0x541d7b(0x14c)](this['state'][_0x541d7b(0xfb)]*0x40)*0.018*(0x1+this[_0x541d7b(0x283)][_0x541d7b(0xfe)]):0x0,this[_0x541d7b(0x13a)][_0x541d7b(0x14d)][_0x541d7b(0x123)]['x']=this[_0x541d7b(0x283)][_0x541d7b(0xa4)]===_0x541d7b(0x105)?Math[_0x541d7b(0x14c)](this['state'][_0x541d7b(0xfb)]*0x37)*0.012*(0x1+this[_0x541d7b(0x283)]['mechanicalStress']):0x0;if(this[_0x541d7b(0x283)][_0x541d7b(0xa4)]==='overheat'&&this[_0x541d7b(0x283)][_0x541d7b(0xae)]){this[_0x541d7b(0x283)][_0x541d7b(0xd7)]=clamp(this[_0x541d7b(0x283)]['heat']+_0x38fef8*this[_0x541d7b(0x283)][_0x541d7b(0xbb)]/LIMITS[_0x541d7b(0x1fe)],0x0,1.2);if(this[_0x541d7b(0x283)]['heat']>=0x1)this['burnMotor']();}else!this['state'][_0x541d7b(0xfa)]&&(this[_0x541d7b(0x283)][_0x541d7b(0xd7)]=clamp(this['state'][_0x541d7b(0xd7)]-_0x38fef8*0.22,0x0,0x1));this['state'][_0x541d7b(0xa4)]===_0x541d7b(0x105)&&this['state'][_0x541d7b(0xae)]&&this[_0x541d7b(0x283)][_0x541d7b(0xfb)]%0x1>0.35&&this[_0x541d7b(0x21d)](),this[_0x541d7b(0x12c)](),this[_0x541d7b(0x10f)](_0x38fef8),this[_0x541d7b(0x1d4)](_0x38fef8);}}class ServoVisualizerApp{constructor(){const _0xcd037f=_0x48dc98;this[_0xcd037f(0x88)]=new ServoSystemModel(SOURCE_DATA),this[_0xcd037f(0x146)]=new MachineScene(document['getElementById'](_0xcd037f(0x146))),this['elements']={'form':document[_0xcd037f(0x8e)](_0xcd037f(0x231)),'selectedTorque':document[_0xcd037f(0x8e)](_0xcd037f(0x9e)),'selectedPower':document[_0xcd037f(0x8e)]('selectedPower'),'selectedSpeed':document[_0xcd037f(0x8e)](_0xcd037f(0x219)),'variantSelect':document['getElementById'](_0xcd037f(0xef)),'validationBadge':document[_0xcd037f(0x8e)](_0xcd037f(0x195)),'modeBadge':document[_0xcd037f(0x8e)](_0xcd037f(0xce)),'torqueLabel':document['getElementById'](_0xcd037f(0x276)),'powerLabel':document[_0xcd037f(0x8e)](_0xcd037f(0x17a)),'speedLabel':document[_0xcd037f(0x8e)](_0xcd037f(0x144)),'loadLabel':document[_0xcd037f(0x8e)](_0xcd037f(0xa8)),'torquePercent':document[_0xcd037f(0x8e)](_0xcd037f(0x198)),'powerPercent':document[_0xcd037f(0x8e)]('powerPercent'),'speedPercent':document['getElementById']('speedPercent'),'loadPercent':document['getElementById'](_0xcd037f(0x12b)),'torqueBar':document[_0xcd037f(0x8e)](_0xcd037f(0x19e)),'powerBar':document[_0xcd037f(0x8e)](_0xcd037f(0x26e)),'speedBar':document[_0xcd037f(0x8e)](_0xcd037f(0x1e8)),'loadBar':document['getElementById'](_0xcd037f(0x194)),'messages':document[_0xcd037f(0x8e)]('messages'),'statusTitle':document[_0xcd037f(0x8e)]('statusTitle'),'statusText':document['getElementById'](_0xcd037f(0x152)),'statusStrip':document[_0xcd037f(0x204)]('.status-strip'),'resetDamageButton':document[_0xcd037f(0x8e)]('resetDamageButton'),'resetViewButton':document[_0xcd037f(0x8e)](_0xcd037f(0x1df)),'sourceDataButton':document[_0xcd037f(0x8e)]('sourceDataButton'),'modalBackdrop':document['getElementById'](_0xcd037f(0xc6)),'closeModalButton':document['getElementById'](_0xcd037f(0x8a)),'sourceDataGrid':document['getElementById'](_0xcd037f(0xe7)),'momentScopeCanvas':document[_0xcd037f(0x8e)]('momentScopeCanvas'),'powerScopeCanvas':document[_0xcd037f(0x8e)](_0xcd037f(0x1ce)),'momentScopeTimeMax':document[_0xcd037f(0x8e)]('momentScopeTimeMax'),'powerScopeTimeMax':document['getElementById'](_0xcd037f(0x156)),'scopeGrid':document['getElementById'](_0xcd037f(0x16a)),'scopeToggleButton':document[_0xcd037f(0x8e)](_0xcd037f(0x205)),'currentVariantNote':document[_0xcd037f(0x8e)](_0xcd037f(0x98)),'startupHint':document['getElementById']('startupHint'),'startupHintTitle':document[_0xcd037f(0x8e)](_0xcd037f(0x1cc)),'startupHintText':document[_0xcd037f(0x8e)]('startupHintText'),'mobileTabs':Array[_0xcd037f(0xc3)](document[_0xcd037f(0x1e4)](_0xcd037f(0x131))),'mobilePanelCloseButtons':Array[_0xcd037f(0xc3)](document[_0xcd037f(0x1e4)]('[data-close-mobile-panel]')),'toast':document[_0xcd037f(0x8e)](_0xcd037f(0x24d))},this[_0xcd037f(0x158)]=null,this[_0xcd037f(0x16b)]=null,this['scopeResizeFrame']=null,this[_0xcd037f(0x14a)]=null,this[_0xcd037f(0x7d)]=!![],this[_0xcd037f(0x1fd)]=INITIAL_TASK_VARIANT,this['hasStoredVariantOnStartup']=INITIAL_TASK_VARIANT['id']!==TASK_VARIANTS[0x0]['id'],this[_0xcd037f(0x226)](),this['populateSourceData'](),this[_0xcd037f(0xab)](),this['bindEvents'](),this['renderEmptyDiagnostics'](),this['renderCurrentVariantNote'](),this[_0xcd037f(0x263)](),this['applyScopeCollapsedState'](),this[_0xcd037f(0x146)]['animate'](),this[_0xcd037f(0x1b4)](),this[_0xcd037f(0x1de)](_0xcd037f(0x87));}[_0x48dc98(0x239)](){const _0x2dab83=_0x48dc98;this[_0x2dab83(0x213)][_0x2dab83(0x1dd)][_0x2dab83(0x1e3)](_0x2dab83(0xa1),_0x55086f=>{const _0x19365b=_0x2dab83;_0x55086f[_0x19365b(0x7e)](),this['hideStartupHint'](),this[_0x19365b(0x142)]();}),[this['elements']['selectedTorque'],this[_0x2dab83(0x213)]['selectedPower'],this[_0x2dab83(0x213)][_0x2dab83(0x219)]][_0x2dab83(0xf7)](_0x4db291=>{const _0x552a0c=_0x2dab83;_0x4db291['addEventListener']('input',()=>this[_0x552a0c(0x22f)](![]));}),this[_0x2dab83(0x213)][_0x2dab83(0x102)][_0x2dab83(0x1e3)]('click',()=>{const _0x373dcd=_0x2dab83;this[_0x373dcd(0x242)](),this[_0x373dcd(0x146)][_0x373dcd(0x247)](),this['renderEmptyDiagnostics'](),this[_0x373dcd(0x200)](_0x373dcd(0xcd));}),this['elements'][_0x2dab83(0x1df)][_0x2dab83(0x1e3)]('click',()=>{const _0x103bda=_0x2dab83;this[_0x103bda(0x146)][_0x103bda(0x244)](),this[_0x103bda(0x200)](_0x103bda(0x1b2));}),this['elements'][_0x2dab83(0xef)]['addEventListener'](_0x2dab83(0xda),_0x233505=>{const _0x368fc7=_0x2dab83;this[_0x368fc7(0x217)](_0x233505['target'][_0x368fc7(0x203)]);}),this[_0x2dab83(0x213)][_0x2dab83(0x81)]['forEach'](_0x1f6993=>{const _0x503583=_0x2dab83;_0x1f6993[_0x503583(0x1e3)]('click',()=>{const _0xd7b3d4=_0x503583;this[_0xd7b3d4(0x242)]();const _0x2d672b=_0x1f6993[_0xd7b3d4(0x278)][_0xd7b3d4(0x113)]||_0xd7b3d4(0x87),_0x3ceb26=_0x1f6993[_0xd7b3d4(0x26c)][_0xd7b3d4(0xd4)](_0xd7b3d4(0x27b))&&_0x2d672b!=='none';this[_0xd7b3d4(0x1de)](_0x3ceb26?_0xd7b3d4(0x87):_0x2d672b);});}),this[_0x2dab83(0x213)]['mobilePanelCloseButtons']['forEach'](_0x4d0346=>{const _0x3d426b=_0x2dab83;_0x4d0346['addEventListener'](_0x3d426b(0x111),()=>{const _0x1ea531=_0x3d426b;this[_0x1ea531(0x242)](),this[_0x1ea531(0x1de)]('none');});}),this['elements']['scopeToggleButton']['addEventListener'](_0x2dab83(0x111),()=>{const _0x1b9930=_0x2dab83;this[_0x1b9930(0x9b)]();}),this[_0x2dab83(0x213)][_0x2dab83(0x129)][_0x2dab83(0x1e3)](_0x2dab83(0x111),()=>{const _0x373891=_0x2dab83;this[_0x373891(0x242)](),this[_0x373891(0x269)]();}),this[_0x2dab83(0x213)]['closeModalButton'][_0x2dab83(0x1e3)]('click',()=>this['closeSourceData']()),this[_0x2dab83(0x213)][_0x2dab83(0xc6)][_0x2dab83(0x1e3)](_0x2dab83(0x111),_0x5d15df=>{const _0x682916=_0x2dab83;if(_0x5d15df[_0x682916(0x1e1)]===this[_0x682916(0x213)][_0x682916(0xc6)])this[_0x682916(0x1c0)]();}),document[_0x2dab83(0x1e3)](_0x2dab83(0xf4),_0x2605ba=>{const _0x19c246=_0x2dab83;if(_0x2605ba[_0x19c246(0x1fa)]==='Escape')this['closeSourceData']();}),window[_0x2dab83(0x1e3)](_0x2dab83(0xa3),()=>{const _0x43ffd4=_0x2dab83;if(this[_0x43ffd4(0x1eb)])cancelAnimationFrame(this[_0x43ffd4(0x1eb)]);this[_0x43ffd4(0x1eb)]=requestAnimationFrame(()=>{this['redrawScopes'](),this['scopeResizeFrame']=null;});}),window['addEventListener']('servo:motor-burned',()=>{const _0x219bf2=_0x2dab83;this[_0x219bf2(0x272)]();});}[_0x48dc98(0x226)](){const _0x1b97f4=_0x48dc98;this[_0x1b97f4(0x213)]['variantSelect'][_0x1b97f4(0xc8)]=TASK_VARIANTS[_0x1b97f4(0x91)](_0x127745=>_0x1b97f4(0x130)+escapeHtml(_0x127745['id'])+'\x22>'+escapeHtml(_0x127745[_0x1b97f4(0xe9)])+_0x1b97f4(0xba))[_0x1b97f4(0x1f5)](''),this[_0x1b97f4(0x213)][_0x1b97f4(0xef)][_0x1b97f4(0x203)]=this['currentVariant']['id'];}['populateSourceData'](){const _0xaa66fa=_0x48dc98,_0x555cee=[[_0xaa66fa(0x22b),formatNumber(SOURCE_DATA[_0xaa66fa(0x20a)],0x0)+_0xaa66fa(0xeb)],[_0xaa66fa(0x8c),formatNumber(SOURCE_DATA[_0xaa66fa(0x175)],0x3)],['Максимальна\x20довжина\x20ходу',formatNumber(SOURCE_DATA[_0xaa66fa(0x271)],0x0)+_0xaa66fa(0xc0)],[_0xaa66fa(0x172),formatNumber(SOURCE_DATA[_0xaa66fa(0x1a0)],0x1)+'\x20с'],[_0xaa66fa(0x11e),formatNumber(SOURCE_DATA[_0xaa66fa(0x10d)],0x0)+':1'],[_0xaa66fa(0x161),formatNumber(SOURCE_DATA[_0xaa66fa(0x1a1)]*0x64,0x0)+'\x20%'],[_0xaa66fa(0x1a3),formatNumber(SOURCE_DATA[_0xaa66fa(0x1e0)]*0x64,0x0)+'\x20%'],[_0xaa66fa(0x261),formatNumber(SOURCE_DATA[_0xaa66fa(0x1a9)],0x1)],[_0xaa66fa(0x92),formatNumber(SOURCE_DATA[_0xaa66fa(0xe3)],0x0)+_0xaa66fa(0xc0)],[_0xaa66fa(0x107),formatNumber(SOURCE_DATA[_0xaa66fa(0x1ba)],0x0)+_0xaa66fa(0x15b)],[_0xaa66fa(0x25d),formatNumber(SOURCE_DATA['gravity'],0x2)+_0xaa66fa(0x1b1)]];this[_0xaa66fa(0x213)][_0xaa66fa(0xe7)]['innerHTML']=_0x555cee[_0xaa66fa(0x91)](([_0x1d4138,_0x218fc9])=>_0xaa66fa(0x1e6)+escapeHtml(_0x1d4138)+'</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22data-value\x22>'+escapeHtml(_0x218fc9)+_0xaa66fa(0xb8))['join']('');}['changeVariant'](_0x5ebc51){const _0x1af46d=_0x48dc98,_0xaa7c14=TASK_VARIANTS[_0x1af46d(0x1b8)](_0x52a23f=>_0x52a23f['id']===_0x5ebc51)||TASK_VARIANTS[0x0];this['currentVariant']=_0xaa7c14,SOURCE_DATA={..._0xaa7c14['data']},this[_0x1af46d(0x88)][_0x1af46d(0x212)](SOURCE_DATA),this[_0x1af46d(0xb2)](_0xaa7c14['id']),this[_0x1af46d(0x1a8)](),this[_0x1af46d(0xcb)](),_0xaa7c14['id']===_0x1af46d(0x21a)?this[_0x1af46d(0xab)]():this['clearStudentInputs'](),this[_0x1af46d(0x146)]['resetDamage'](),this[_0x1af46d(0xd2)](),this[_0x1af46d(0x242)](),this[_0x1af46d(0x200)]('Обрано:\x20'+_0xaa7c14[_0x1af46d(0xe9)]+_0x1af46d(0x1c8));}[_0x48dc98(0xb2)](_0x3c7a25){const _0x4dcd63=_0x48dc98;try{window[_0x4dcd63(0x1ee)]['setItem'](VARIANT_STORAGE_KEY,_0x3c7a25);}catch(_0x23e416){console['warn'](_0x4dcd63(0x256),_0x23e416);}}['renderCurrentVariantNote'](){const _0x38e05e=_0x48dc98;this[_0x38e05e(0x213)]['currentVariantNote'][_0x38e05e(0x16f)]=_0x38e05e(0x1ea)+this[_0x38e05e(0x1fd)]['title'];}['renderStartupHint'](){const _0x25f08b=_0x48dc98;if(this[_0x25f08b(0xee)]){this[_0x25f08b(0x213)][_0x25f08b(0x1cc)][_0x25f08b(0x16f)]=_0x25f08b(0x23a)+this[_0x25f08b(0x1fd)][_0x25f08b(0xe9)],this[_0x25f08b(0x213)][_0x25f08b(0xa5)][_0x25f08b(0x16f)]=_0x25f08b(0x137)+this['currentVariant'][_0x25f08b(0xe9)]+'»\x20у\x20меню\x20«Параметри».';return;}this[_0x25f08b(0x213)][_0x25f08b(0x1cc)]['textContent']=_0x25f08b(0xe6),this[_0x25f08b(0x213)][_0x25f08b(0xa5)][_0x25f08b(0x16f)]=_0x25f08b(0x1b7);}[_0x48dc98(0x242)](){const _0x51367c=_0x48dc98;this[_0x51367c(0x213)]['startupHint']['classList']['add'](_0x51367c(0x237));}[_0x48dc98(0x1f6)](){const _0x516fda=_0x48dc98;this[_0x516fda(0x213)][_0x516fda(0x9e)][_0x516fda(0x203)]='',this[_0x516fda(0x213)][_0x516fda(0x8d)][_0x516fda(0x203)]='',this[_0x516fda(0x213)][_0x516fda(0x219)][_0x516fda(0x203)]='',[this[_0x516fda(0x213)][_0x516fda(0x9e)],this['elements']['selectedPower'],this['elements'][_0x516fda(0x219)]][_0x516fda(0xf7)](_0x584566=>_0x584566[_0x516fda(0x26c)][_0x516fda(0x24e)](_0x516fda(0x1d9)));}[_0x48dc98(0xab)](){const _0x475289=_0x48dc98;if(this[_0x475289(0x1fd)]['id']!==_0x475289(0x21a))return;const _0x58958b=this[_0x475289(0x88)][_0x475289(0xec)]();this[_0x475289(0x213)][_0x475289(0x9e)][_0x475289(0x203)]=formatNumberForInput(_0x58958b[_0x475289(0x228)],0x4),this['elements'][_0x475289(0x8d)][_0x475289(0x203)]=formatNumberForInput(_0x58958b['motorPowerW'],0x2),this[_0x475289(0x213)]['selectedSpeed'][_0x475289(0x203)]=formatNumberForInput(_0x58958b[_0x475289(0x1fb)],0x0),[this[_0x475289(0x213)]['selectedTorque'],this[_0x475289(0x213)]['selectedPower'],this[_0x475289(0x213)][_0x475289(0x219)]][_0x475289(0xf7)](_0x1ae974=>_0x1ae974[_0x475289(0x26c)][_0x475289(0x24e)](_0x475289(0x1d9)));}[_0x48dc98(0x22f)](_0x2c09e7){const _0x3be07f=_0x48dc98,_0x31c44a=[this[_0x3be07f(0x213)][_0x3be07f(0x9e)],this[_0x3be07f(0x213)][_0x3be07f(0x8d)],this[_0x3be07f(0x213)][_0x3be07f(0x219)]];let _0x1a7675=!![];return _0x31c44a[_0x3be07f(0xf7)](_0x5a66b9=>{const _0x33c44c=_0x3be07f,_0x126f36=Number(_0x5a66b9[_0x33c44c(0x203)]),_0x481c21=Number[_0x33c44c(0xff)](_0x126f36)&&_0x126f36>0x0;_0x1a7675=_0x1a7675&&_0x481c21,(_0x2c09e7||_0x5a66b9[_0x33c44c(0x203)][_0x33c44c(0x250)]()!=='')&&_0x5a66b9['classList'][_0x33c44c(0x138)](_0x33c44c(0x1d9),!_0x481c21);}),this[_0x3be07f(0x94)](this[_0x3be07f(0x213)][_0x3be07f(0x195)],_0x1a7675?'ok':_0x3be07f(0x1e5),_0x1a7675?_0x3be07f(0x23f):'Перевірте\x20ввід'),_0x1a7675;}[_0x48dc98(0x166)](){const _0x1698eb=_0x48dc98;return{'torqueNm':Number(this[_0x1698eb(0x213)][_0x1698eb(0x9e)][_0x1698eb(0x203)]),'powerW':Number(this[_0x1698eb(0x213)][_0x1698eb(0x8d)][_0x1698eb(0x203)]),'speedRpm':Number(this[_0x1698eb(0x213)][_0x1698eb(0x219)]['value'])};}[_0x48dc98(0x142)](){const _0x418b21=_0x48dc98;if(!this[_0x418b21(0x22f)](!![])){this[_0x418b21(0x200)](_0x418b21(0x10e));return;}const _0x32b823=this[_0x418b21(0x88)]['evaluateSelection'](this['readSelection']());this['scene'][_0x418b21(0x1bf)](_0x32b823),this['renderDiagnostics'](_0x32b823),this[_0x418b21(0x200)](_0x418b21(0x17e));}[_0x48dc98(0x272)](){const _0x50f192=_0x48dc98;this[_0x50f192(0x7c)]('burned'),this[_0x50f192(0x213)][_0x50f192(0x225)][_0x50f192(0x16f)]='Двигун\x20пошкоджено',this['elements']['statusText']['textContent']='Сервопривод\x20згорів\x20через\x20перевантаження.\x20Натисніть\x20кнопку\x20«Скинути»,\x20щоб\x20прибрати\x20пошкодження,\x20дим\x20і\x20повернути\x20модель\x20у\x20початковий\x20стан.',this[_0x50f192(0x94)](this[_0x50f192(0x213)][_0x50f192(0xce)],_0x50f192(0x1e5),_0x50f192(0x25f));const _0x21f656=Array['from'](this[_0x50f192(0x213)][_0x50f192(0x25e)][_0x50f192(0xa6)])[_0x50f192(0x83)](_0x579afd=>_0x579afd[_0x50f192(0x278)][_0x50f192(0x25c)]===_0x50f192(0x218));if(!_0x21f656){const _0x483fb6=document[_0x50f192(0xad)](_0x50f192(0x257));_0x483fb6[_0x50f192(0x210)]=_0x50f192(0x16d),_0x483fb6['dataset']['code']='motor-burned',_0x483fb6['textContent']=_0x50f192(0x23b),this[_0x50f192(0x213)][_0x50f192(0x25e)]['appendChild'](_0x483fb6);}}[_0x48dc98(0x181)](_0x484462){const _0x35416a=_0x48dc98,_0x25c7cc=_0x484462[_0x35416a(0xb4)][_0x35416a(0x1c1)]*0x64,_0x4f381d=_0x484462[_0x35416a(0xb4)]['powerRatio']*0x64,_0x50153b=_0x484462[_0x35416a(0xb4)][_0x35416a(0x1d0)]*0x64,_0x301242=this[_0x35416a(0x19a)](_0x484462['ratios']);this[_0x35416a(0x16b)]=_0x484462,this[_0x35416a(0x95)](this[_0x35416a(0x213)][_0x35416a(0x198)],this[_0x35416a(0x213)]['torqueLabel'],this[_0x35416a(0x213)]['torqueBar'],_0x25c7cc,this['classifyReserve'](_0x484462[_0x35416a(0xb4)][_0x35416a(0x1c1)]),this[_0x35416a(0xc2)](_0x484462[_0x35416a(0xb4)][_0x35416a(0x1c1)])),this[_0x35416a(0x95)](this[_0x35416a(0x213)][_0x35416a(0x9f)],this['elements']['powerLabel'],this[_0x35416a(0x213)][_0x35416a(0x26e)],_0x4f381d,this[_0x35416a(0xb3)](_0x484462[_0x35416a(0xb4)]['powerRatio']),this[_0x35416a(0xc2)](_0x484462['ratios'][_0x35416a(0x1d7)])),this['renderMetric'](this[_0x35416a(0x213)]['speedPercent'],this[_0x35416a(0x213)][_0x35416a(0x144)],this[_0x35416a(0x213)][_0x35416a(0x1e8)],_0x50153b,this[_0x35416a(0x145)](_0x484462['ratios']['speedRatio']),this[_0x35416a(0x144)](_0x484462[_0x35416a(0xb4)][_0x35416a(0x1d0)])),this['renderMetric'](this[_0x35416a(0x213)][_0x35416a(0x12b)],this[_0x35416a(0x213)][_0x35416a(0xa8)],this[_0x35416a(0x213)][_0x35416a(0x194)],_0x301242,this[_0x35416a(0x23c)](_0x301242),this[_0x35416a(0x17f)](_0x301242));const _0x5bf071=this[_0x35416a(0x1a4)](_0x484462);this[_0x35416a(0x213)][_0x35416a(0x225)][_0x35416a(0x16f)]=_0x5bf071[_0x35416a(0xe9)],this[_0x35416a(0x213)][_0x35416a(0x152)]['textContent']=_0x5bf071['text'],this['setPill'](this[_0x35416a(0x213)]['modeBadge'],_0x484462[_0x35416a(0xa0)],_0x5bf071['badge']),this['setStatusStripMode'](_0x484462[_0x35416a(0xa4)]===_0x35416a(0xb9)?_0x35416a(0xb9):_0x35416a(0x1ca)),this[_0x35416a(0x213)][_0x35416a(0x25e)][_0x35416a(0xc8)]=_0x484462['messages'][_0x35416a(0x91)](_0x5f385d=>_0x35416a(0xc4)+(_0x5f385d[_0x35416a(0xb1)]==='ok'?'':_0x5f385d['type'])+'\x22>'+escapeHtml(_0x5f385d[_0x35416a(0x248)])+_0x35416a(0x10b))[_0x35416a(0x1f5)](''),this[_0x35416a(0x106)](_0x484462);}['renderEmptyDiagnostics'](){const _0x11b239=_0x48dc98;this['elements'][_0x11b239(0x198)][_0x11b239(0xc8)]='—\x20<small>%</small>',this[_0x11b239(0x213)][_0x11b239(0x9f)][_0x11b239(0xc8)]='—\x20<small>%</small>',this[_0x11b239(0x213)][_0x11b239(0x1d2)][_0x11b239(0xc8)]='—\x20<small>%</small>',this[_0x11b239(0x213)]['loadPercent'][_0x11b239(0xc8)]=_0x11b239(0x162),this[_0x11b239(0x213)][_0x11b239(0x276)][_0x11b239(0x16f)]='—',this[_0x11b239(0x213)]['powerLabel'][_0x11b239(0x16f)]='—',this[_0x11b239(0x213)][_0x11b239(0x144)]['textContent']='—',this[_0x11b239(0x213)][_0x11b239(0xa8)]['textContent']='—',[this[_0x11b239(0x213)][_0x11b239(0x19e)],this[_0x11b239(0x213)][_0x11b239(0x26e)],this['elements'][_0x11b239(0x1e8)],this[_0x11b239(0x213)][_0x11b239(0x194)]]['forEach'](_0x230f74=>{const _0x5d8ffe=_0x11b239;_0x230f74['className']=_0x5d8ffe(0x1ec),_0x230f74['querySelector'](_0x5d8ffe(0x24c))[_0x5d8ffe(0x173)]['width']='0%';}),this[_0x11b239(0x213)]['messages'][_0x11b239(0xc8)]='<div\x20class=\x22message\x22>Введіть\x20параметри\x20сервоприводу\x20для\x20поточного\x20варіанту\x20і\x20запустіть\x20перевірку.\x20Точні\x20розрахункові\x20значення\x20приховані,\x20щоб\x20студент\x20міг\x20виконати\x20розрахунок\x20самостійно.</div>',this[_0x11b239(0x16b)]=null,this[_0x11b239(0x240)](),this[_0x11b239(0x213)]['statusTitle'][_0x11b239(0x16f)]=_0x11b239(0x18d),this[_0x11b239(0x213)][_0x11b239(0x152)][_0x11b239(0x16f)]=_0x11b239(0x16e),this[_0x11b239(0x7c)](_0x11b239(0x1ca)),this[_0x11b239(0x94)](this['elements'][_0x11b239(0xce)],'ok',_0x11b239(0x85)),this[_0x11b239(0x22f)](![]);}[_0x48dc98(0x95)](_0x2dc311,_0x1e245e,_0x522a2b,_0x44a392,_0x29c92d,_0x41cc69){const _0xb7bbeb=_0x48dc98;_0x2dc311[_0xb7bbeb(0xc8)]=formatNumber(_0x44a392,0x0)+_0xb7bbeb(0x211),_0x1e245e[_0xb7bbeb(0x16f)]=_0x41cc69,_0x522a2b[_0xb7bbeb(0x210)]=_0xb7bbeb(0xa2)+_0x29c92d,_0x522a2b[_0xb7bbeb(0x204)](_0xb7bbeb(0x24c))[_0xb7bbeb(0x173)][_0xb7bbeb(0x193)]=clamp(_0x44a392,0x0,0x104)+'%';}[_0x48dc98(0xb3)](_0x3f7daf){const _0x64f6c3=_0x48dc98;if(_0x3f7daf<LIMITS['criticalLow']||_0x3f7daf>LIMITS[_0x64f6c3(0x110)])return _0x64f6c3(0x1e5);if(_0x3f7daf<LIMITS['warningLow']||_0x3f7daf>LIMITS[_0x64f6c3(0x214)])return'warn';return'ok';}[_0x48dc98(0x145)](_0x198639){const _0x4831a6=_0x48dc98;if(_0x198639<LIMITS[_0x4831a6(0xf9)]||_0x198639>LIMITS[_0x4831a6(0x121)])return _0x4831a6(0x1e5);if(_0x198639<LIMITS[_0x4831a6(0x189)]||_0x198639>LIMITS[_0x4831a6(0x82)])return _0x4831a6(0x1af);return'ok';}[_0x48dc98(0x19a)](_0x840874){const _0xafcfa8=_0x48dc98,_0x5c3961=_0x840874['torqueRatio']>0x0?0x64/_0x840874[_0xafcfa8(0x1c1)]:0x3e7,_0x2b72be=_0x840874[_0xafcfa8(0x1d7)]>0x0?0x64/_0x840874[_0xafcfa8(0x1d7)]:0x3e7;return clamp(Math[_0xafcfa8(0x120)](_0x5c3961,_0x2b72be),0x0,0x3e7);}[_0x48dc98(0x23c)](_0x3a3ae4){const _0x74c49c=_0x48dc98;if(_0x3a3ae4>0x96)return'danger';if(_0x3a3ae4>0x65)return _0x74c49c(0x1af);return'ok';}[_0x48dc98(0x17f)](_0xe3744f){const _0x2295de=_0x48dc98;if(_0xe3744f>0x96)return'перевантаження';if(_0xe3744f>0x65)return _0x2295de(0x8b);if(_0xe3744f>=0x63)return'номінально';return'запас';}[_0x48dc98(0xc2)](_0x360395){const _0x3f8ead=_0x48dc98;if(_0x360395<LIMITS[_0x3f8ead(0x265)])return _0x3f8ead(0x275);if(_0x360395<LIMITS[_0x3f8ead(0xd6)])return'замало';if(_0x360395<=LIMITS[_0x3f8ead(0x214)])return _0x3f8ead(0x1d1);if(_0x360395<=LIMITS[_0x3f8ead(0x110)])return _0x3f8ead(0x17d);return _0x3f8ead(0x18c);}[_0x48dc98(0x144)](_0x2fd37b){const _0x3e482b=_0x48dc98;if(_0x2fd37b<LIMITS[_0x3e482b(0xf9)])return _0x3e482b(0xd0);if(_0x2fd37b<LIMITS[_0x3e482b(0x189)])return _0x3e482b(0x154);if(_0x2fd37b<=LIMITS[_0x3e482b(0x82)])return _0x3e482b(0x1d1);if(_0x2fd37b<=LIMITS[_0x3e482b(0x13b)])return _0x3e482b(0x13c);if(_0x2fd37b<=LIMITS[_0x3e482b(0x121)])return'дуже\x20швидко';return _0x3e482b(0x186);}[_0x48dc98(0x1a4)](_0x4b0f44){const _0x3f2a56=_0x48dc98,_0x22c0c6={'normal':[_0x3f2a56(0x27e),_0x3f2a56(0x96),'Норма'],'weak':[_0x3f2a56(0x100),_0x3f2a56(0xe5),_0x3f2a56(0x20b)],'overheat':[_0x3f2a56(0x199),_0x3f2a56(0x157),_0x3f2a56(0x26f)],'oversized':[_0x3f2a56(0x209),'Система\x20працює,\x20але\x20запас\x20моменту\x20або\x20потужності\x20завеликий.\x20У\x203D\x20моделі\x20це\x20показано\x20пульсацією\x20та\x20підвищеною\x20вібрацією\x20вузлів.',_0x3f2a56(0x274)],'mechanicalDamage':['Механічне\x20пошкодження',_0x3f2a56(0xf8),_0x3f2a56(0x115)],'slow':['Повільний\x20рух','Оберти\x20двигуна\x20нижчі\x20за\x20бажані.\x20Система\x20не\x20встигає\x20виконати\x20переміщення\x20за\x20заданий\x20час.',_0x3f2a56(0x1b9)],'fast':[_0x3f2a56(0x93),_0x3f2a56(0x1ad),_0x3f2a56(0x233)]},_0x17f7c4=_0x22c0c6[_0x4b0f44[_0x3f2a56(0xa4)]]||_0x22c0c6[_0x3f2a56(0x1ca)];return{'title':_0x17f7c4[0x0],'text':_0x17f7c4[0x1],'badge':_0x17f7c4[0x2]};}[_0x48dc98(0x94)](_0x11a783,_0xa0f7ea,_0x52311a){const _0xa078b=_0x48dc98;_0x11a783['className']='pill\x20'+_0xa0f7ea,_0x11a783[_0xa078b(0xc8)]=_0xa078b(0x1f2)+escapeHtml(_0x52311a);}['setStatusStripMode'](_0x5d6415){const _0x5289a2=_0x48dc98;this[_0x5289a2(0x213)][_0x5289a2(0x1f4)][_0x5289a2(0x26c)][_0x5289a2(0x24e)]('overheat',_0x5289a2(0xfa));if(_0x5d6415==='overheat')this[_0x5289a2(0x213)][_0x5289a2(0x1f4)][_0x5289a2(0x26c)][_0x5289a2(0x1c5)](_0x5289a2(0xb9));if(_0x5d6415===_0x5289a2(0xfa))this[_0x5289a2(0x213)][_0x5289a2(0x1f4)][_0x5289a2(0x26c)][_0x5289a2(0x1c5)](_0x5289a2(0xfa));}[_0x48dc98(0x9b)](){const _0x39af8c=_0x48dc98;this['areScopesCollapsed']=!this[_0x39af8c(0x7d)],this[_0x39af8c(0x1e9)](),!this[_0x39af8c(0x7d)]&&requestAnimationFrame(()=>this['redrawScopes']());}[_0x48dc98(0x1e9)](){const _0x15406e=_0x48dc98;this[_0x15406e(0x213)]['scopeGrid'][_0x15406e(0x26c)][_0x15406e(0x138)](_0x15406e(0x24b),this[_0x15406e(0x7d)]),this['elements']['scopeToggleButton'][_0x15406e(0x16f)]=this[_0x15406e(0x7d)]?'Розгорнути\x20графіки':_0x15406e(0x220),this[_0x15406e(0x213)][_0x15406e(0x205)][_0x15406e(0x19d)](_0x15406e(0x19f),String(!this[_0x15406e(0x7d)]));}[_0x48dc98(0x1b4)](){const _0x355467=()=>{const _0x5be3ec=_0x2708;this[_0x5be3ec(0x16b)]&&!this[_0x5be3ec(0x7d)]&&this[_0x5be3ec(0x106)](this[_0x5be3ec(0x16b)]),this[_0x5be3ec(0x14a)]=requestAnimationFrame(_0x355467);};_0x355467();}[_0x48dc98(0x97)](){const _0x770c79=_0x48dc98;this[_0x770c79(0x16b)]?this[_0x770c79(0x106)](this['lastEvaluation']):this['renderEmptyScopes']();}[_0x48dc98(0x106)](_0x2dffcd){const _0xf85984=_0x48dc98;if(this[_0xf85984(0x7d)])return;const _0x3f3e2f=this[_0xf85984(0x1f7)](_0x2dffcd),_0x4c09c7=this[_0xf85984(0x146)][_0xf85984(0x1ae)](),_0x5be5db=_0x4c09c7[_0xf85984(0x264)]?_0x4c09c7[_0xf85984(0x122)]*SOURCE_DATA['moveTimeSec']:0x0,_0x329096=formatNumber(SOURCE_DATA[_0xf85984(0x1a0)],0x2)+'\x20c';this[_0xf85984(0x213)][_0xf85984(0x1c4)][_0xf85984(0x16f)]=_0x329096,this[_0xf85984(0x213)][_0xf85984(0x156)]['textContent']=_0x329096,this[_0xf85984(0xdf)]({'canvas':this['elements']['momentScopeCanvas'],'unit':_0xf85984(0x18f),'axisLabel':'M','demandSeries':_0x3f3e2f[_0xf85984(0x268)],'selectedSeries':_0x3f3e2f[_0xf85984(0x222)],'timeSeries':_0x3f3e2f[_0xf85984(0x12a)],'activeTimeSec':_0x5be5db}),this[_0xf85984(0xdf)]({'canvas':this[_0xf85984(0x213)]['powerScopeCanvas'],'unit':'Вт','axisLabel':'P','demandSeries':_0x3f3e2f[_0xf85984(0x25b)],'selectedSeries':_0x3f3e2f['powerSelected'],'timeSeries':_0x3f3e2f[_0xf85984(0x12a)],'activeTimeSec':_0x5be5db});}[_0x48dc98(0x240)](){const _0x39f104=_0x48dc98;if(!this['elements'][_0x39f104(0xcf)]||!this[_0x39f104(0x213)][_0x39f104(0x1ce)])return;this[_0x39f104(0x213)][_0x39f104(0x1c4)]['textContent']='—',this[_0x39f104(0x213)][_0x39f104(0x156)][_0x39f104(0x16f)]='—',this[_0x39f104(0x149)](this['elements'][_0x39f104(0xcf)],'Очікує\x20запуску'),this[_0x39f104(0x149)](this['elements'][_0x39f104(0x1ce)],_0x39f104(0x190));}[_0x48dc98(0x1f7)](_0x18b19d){const _0x2af6c5=_0x48dc98,_0x4411fc=0xb4,_0x556e06=Math[_0x2af6c5(0x120)](SOURCE_DATA[_0x2af6c5(0x1a0)],0.1),_0x1450cc=Math[_0x2af6c5(0x120)](_0x18b19d[_0x2af6c5(0x201)][_0x2af6c5(0x228)],0x0),_0x4a1348=Math[_0x2af6c5(0x120)](_0x18b19d[_0x2af6c5(0x201)]['motorPowerW'],0x0),_0x29993e=Math[_0x2af6c5(0x120)](_0x18b19d[_0x2af6c5(0x17c)][_0x2af6c5(0xb5)]||0x0,0x0),_0x3c1d22=Math['max'](_0x18b19d[_0x2af6c5(0x17c)][_0x2af6c5(0x13e)]||0x0,0x0),_0x455aba=[],_0x1b0024=[],_0x515c35=[],_0x2a9c65=[],_0x7ce7d5=[];for(let _0x272ead=0x0;_0x272ead<_0x4411fc;_0x272ead+=0x1){const _0x3c6f8a=_0x272ead/(_0x4411fc-0x1),_0x3ef2c4=_0x3c6f8a*_0x556e06,_0x55036d=Math[_0x2af6c5(0x1d3)](-Math['pow']((_0x3c6f8a-0.14)/0.1,0x2))+Math['exp'](-Math[_0x2af6c5(0xc1)]((_0x3c6f8a-0.86)/0.1,0x2)),_0x4f3fed=_0x3c6f8a<0.22?_0x3c6f8a/0.22:_0x3c6f8a>0.78?(0x1-_0x3c6f8a)/0.22:0x1,_0x1dce1b=clamp(_0x4f3fed,0x0,0x1),_0x32b1c6=clamp(_0x55036d,0x0,1.4),_0x4f1dc5=0.58+0.42*_0x32b1c6,_0x2dce8d=(0.18+0.82*_0x1dce1b)*(0.78+0.22*_0x32b1c6);_0x455aba[_0x2af6c5(0x15a)](_0x3ef2c4),_0x1b0024['push'](_0x1450cc*_0x4f1dc5),_0x515c35[_0x2af6c5(0x15a)](_0x29993e),_0x2a9c65[_0x2af6c5(0x15a)](_0x4a1348*_0x2dce8d),_0x7ce7d5[_0x2af6c5(0x15a)](_0x3c1d22);}return{'timeSeries':_0x455aba,'momentDemand':_0x1b0024,'momentSelected':_0x515c35,'powerDemand':_0x2a9c65,'powerSelected':_0x7ce7d5};}[_0x48dc98(0x282)](_0x55d91b){const _0x2bf56f=_0x48dc98,_0x96bb8c=Math[_0x2bf56f(0x120)](window[_0x2bf56f(0xcc)]||0x1,0x1),_0x1df34b=_0x55d91b['getBoundingClientRect'](),_0x3860a8=Math['max'](Math[_0x2bf56f(0x18b)](_0x1df34b[_0x2bf56f(0x193)]),0x28),_0x464e3f=Math[_0x2bf56f(0x120)](Math[_0x2bf56f(0x18b)](_0x1df34b[_0x2bf56f(0x132)]),0x28),_0x1eb324=Math[_0x2bf56f(0x18b)](_0x3860a8*_0x96bb8c),_0x227f4a=Math[_0x2bf56f(0x18b)](_0x464e3f*_0x96bb8c);(_0x55d91b[_0x2bf56f(0x193)]!==_0x1eb324||_0x55d91b['height']!==_0x227f4a)&&(_0x55d91b[_0x2bf56f(0x193)]=_0x1eb324,_0x55d91b[_0x2bf56f(0x132)]=_0x227f4a);const _0x36b736=_0x55d91b[_0x2bf56f(0x20f)]('2d');return _0x36b736[_0x2bf56f(0x1ef)](_0x96bb8c,0x0,0x0,_0x96bb8c,0x0,0x0),{'context':_0x36b736,'width':_0x3860a8,'height':_0x464e3f};}[_0x48dc98(0x149)](_0x422ea5,_0x295946){const _0x5cdedb=_0x48dc98;if(!_0x422ea5)return;const {context:_0x165569,width:_0x50c711,height:_0x4c5334}=this[_0x5cdedb(0x282)](_0x422ea5);_0x165569['clearRect'](0x0,0x0,_0x50c711,_0x4c5334),_0x165569[_0x5cdedb(0x1f9)]=_0x5cdedb(0x1f8),_0x165569['fillRect'](0x0,0x0,_0x50c711,_0x4c5334),this[_0x5cdedb(0xe1)](_0x165569,_0x50c711,_0x4c5334,{'top':0x8,'right':0xa,'bottom':0xe,'left':0x8}),_0x165569[_0x5cdedb(0x1f9)]='rgba(187,\x20247,\x20208,\x200.88)',_0x165569[_0x5cdedb(0x11c)]='700\x2013px\x20system-ui,\x20sans-serif',_0x165569['textAlign']=_0x5cdedb(0x10a),_0x165569['textBaseline']='middle',_0x165569['fillText'](_0x295946,_0x50c711/0x2,_0x4c5334/0x2);}[_0x48dc98(0x135)](_0x38f75d,_0x573de9,_0x381b47,_0x49406b,_0x3f3cf0,_0x1a1d1f,_0x4b3175){const _0x41c186=_0x48dc98,_0x53d53c=_0x381b47[_0x381b47[_0x41c186(0xf1)]-0x1]||0x0,_0x274ce1=clamp(_0x1a1d1f,0x0,_0x53d53c);let _0x2749e3=_0x381b47[_0x41c186(0x150)](_0x2f3271=>_0x2f3271>=_0x274ce1);_0x2749e3===-0x1?_0x2749e3=_0x381b47[_0x41c186(0xf1)]:_0x2749e3=Math['max'](0x1,_0x2749e3+0x1);if(_0x2749e3<0x2){const _0x1a74f5=_0x49406b(_0x381b47[0x0]||0x0),_0x55e92f=_0x3f3cf0(_0x573de9[0x0]||0x0);_0x38f75d[_0x41c186(0x227)](),_0x38f75d[_0x41c186(0x1f9)]=_0x4b3175[_0x41c186(0x182)],_0x38f75d[_0x41c186(0x14e)]=_0x4b3175[_0x41c186(0x1bc)],_0x38f75d['shadowBlur']=_0x4b3175[_0x41c186(0xdc)],_0x38f75d[_0x41c186(0x136)](),_0x38f75d[_0x41c186(0x124)](_0x1a74f5,_0x55e92f,_0x4b3175[_0x41c186(0x235)],0x0,Math['PI']*0x2),_0x38f75d[_0x41c186(0x196)](),_0x38f75d[_0x41c186(0x153)]();return;}_0x38f75d['save'](),_0x38f75d[_0x41c186(0x260)]=_0x4b3175[_0x41c186(0x260)],_0x38f75d[_0x41c186(0x26d)]=_0x4b3175[_0x41c186(0x26d)],_0x38f75d[_0x41c186(0x133)](_0x4b3175[_0x41c186(0x112)]||[]),_0x38f75d['lineJoin']=_0x41c186(0x18b),_0x38f75d['lineCap']=_0x41c186(0x18b),_0x38f75d[_0x41c186(0x14e)]=_0x4b3175[_0x41c186(0x14e)],_0x38f75d[_0x41c186(0x11a)]=_0x4b3175[_0x41c186(0x11a)],_0x38f75d[_0x41c186(0x136)]();for(let _0x269846=0x0;_0x269846<_0x2749e3;_0x269846+=0x1){const _0x34baa4=_0x49406b(_0x381b47[_0x269846]),_0x42dd49=_0x3f3cf0(_0x573de9[_0x269846]);if(_0x269846===0x0)_0x38f75d[_0x41c186(0x253)](_0x34baa4,_0x42dd49);else _0x38f75d[_0x41c186(0x21f)](_0x34baa4,_0x42dd49);}_0x38f75d[_0x41c186(0x21e)](),_0x38f75d[_0x41c186(0x153)]();const _0x9abdf6=_0x2749e3-0x1,_0x382495=_0x49406b(_0x381b47[_0x9abdf6]),_0x496c5d=_0x3f3cf0(_0x573de9[_0x9abdf6]);_0x38f75d[_0x41c186(0x227)](),_0x38f75d[_0x41c186(0x1f9)]=_0x4b3175[_0x41c186(0x182)],_0x38f75d[_0x41c186(0x14e)]=_0x4b3175[_0x41c186(0x1bc)],_0x38f75d[_0x41c186(0x11a)]=_0x4b3175['headGlowBlur'],_0x38f75d[_0x41c186(0x136)](),_0x38f75d[_0x41c186(0x124)](_0x382495,_0x496c5d,_0x4b3175[_0x41c186(0x235)],0x0,Math['PI']*0x2),_0x38f75d[_0x41c186(0x196)](),_0x38f75d['restore']();}[_0x48dc98(0xdf)]({canvas:_0x161b43,unit:_0x10171d,axisLabel:_0x473628,demandSeries:_0x226f17,selectedSeries:_0x5395fc,timeSeries:_0x43da4a,activeTimeSec:_0x5bcf1e}){const _0x54c265=_0x48dc98;if(!_0x161b43||!_0x226f17[_0x54c265(0xf1)]||!_0x5395fc[_0x54c265(0xf1)]||!_0x43da4a['length'])return;const {context:_0x1be351,width:_0x2efe02,height:_0x437794}=this[_0x54c265(0x282)](_0x161b43),_0x55ba19={'top':0x8,'right':0xa,'bottom':0xe,'left':0x8};_0x1be351[_0x54c265(0x15c)](0x0,0x0,_0x2efe02,_0x437794),_0x1be351[_0x54c265(0x1f9)]=_0x54c265(0x1f8),_0x1be351[_0x54c265(0x243)](0x0,0x0,_0x2efe02,_0x437794),this[_0x54c265(0xe1)](_0x1be351,_0x2efe02,_0x437794,_0x55ba19);const _0x375138=Math[_0x54c265(0x120)](..._0x226f17,0.01)*1.12,_0x1b5aa4=Math['max'](_0x43da4a[_0x43da4a[_0x54c265(0xf1)]-0x1],0.1),_0x25d0fe=_0x3437b6=>_0x55ba19[_0x54c265(0x11b)]+_0x3437b6/_0x1b5aa4*(_0x2efe02-_0x55ba19[_0x54c265(0x11b)]-_0x55ba19[_0x54c265(0x266)]),_0x61cc92=_0x31651e=>_0x437794-_0x55ba19[_0x54c265(0x171)]-_0x31651e/_0x375138*(_0x437794-_0x55ba19[_0x54c265(0x116)]-_0x55ba19[_0x54c265(0x171)]),_0x3c85ad=clamp(_0x5bcf1e,0x0,_0x1b5aa4);this['drawLiveScopeTrace'](_0x1be351,_0x226f17,_0x43da4a,_0x25d0fe,_0x61cc92,_0x3c85ad,{'strokeStyle':_0x54c265(0xd3),'lineWidth':2.4,'lineDash':[],'shadowColor':_0x54c265(0x20c),'shadowBlur':0xa,'headColor':_0x54c265(0xd3),'headGlowColor':_0x54c265(0x21c),'headGlowBlur':0xe,'headRadius':0x4}),_0x1be351[_0x54c265(0x1f9)]='rgba(187,\x20247,\x20208,\x200.86)',_0x1be351[_0x54c265(0x11c)]='700\x2010px\x20system-ui,\x20sans-serif',_0x1be351[_0x54c265(0x19b)]=_0x54c265(0x11b),_0x1be351[_0x54c265(0xdb)]=_0x54c265(0x116),_0x1be351[_0x54c265(0x207)](_0x54c265(0x108)+_0x473628+':\x20'+formatNumber(_0x375138/1.12,0x2)+'\x20'+_0x10171d,0xa,0x8),_0x1be351[_0x54c265(0x19b)]=_0x54c265(0x266),_0x1be351[_0x54c265(0x207)](formatNumber(_0x3c85ad,0x2)+'\x20c',_0x2efe02-0xa,0x8);}[_0x48dc98(0xe1)](_0x11d12b,_0x320021,_0x46a2fa,_0x455132){const _0xc3d3a1=_0x48dc98;_0x11d12b[_0xc3d3a1(0x260)]=_0xc3d3a1(0x12d),_0x11d12b[_0xc3d3a1(0x26d)]=0x1;for(let _0x39f240=0x0;_0x39f240<=0x8;_0x39f240+=0x1){const _0x401cd5=_0x455132[_0xc3d3a1(0x11b)]+(_0x320021-_0x455132[_0xc3d3a1(0x11b)]-_0x455132[_0xc3d3a1(0x266)])*_0x39f240/0x8;_0x11d12b['beginPath'](),_0x11d12b[_0xc3d3a1(0x253)](_0x401cd5,_0x455132['top']),_0x11d12b[_0xc3d3a1(0x21f)](_0x401cd5,_0x46a2fa-_0x455132[_0xc3d3a1(0x171)]),_0x11d12b[_0xc3d3a1(0x21e)]();}for(let _0xba47e6=0x0;_0xba47e6<=0x6;_0xba47e6+=0x1){const _0x3dc999=_0x455132[_0xc3d3a1(0x116)]+(_0x46a2fa-_0x455132[_0xc3d3a1(0x116)]-_0x455132['bottom'])*_0xba47e6/0x6;_0x11d12b[_0xc3d3a1(0x136)](),_0x11d12b['moveTo'](_0x455132[_0xc3d3a1(0x11b)],_0x3dc999),_0x11d12b[_0xc3d3a1(0x21f)](_0x320021-_0x455132[_0xc3d3a1(0x266)],_0x3dc999),_0x11d12b[_0xc3d3a1(0x21e)]();}}[_0x48dc98(0x1de)](_0x7e619d){const _0x47b421=_0x48dc98,_0x49a850={'parameters':this[_0x47b421(0x213)][_0x47b421(0x1dd)][_0x47b421(0x273)](_0x47b421(0x1fc)),'diagnostics':this[_0x47b421(0x213)][_0x47b421(0x25e)][_0x47b421(0x273)]('.right-panel'),'status':this[_0x47b421(0x213)]['statusStrip']};Object[_0x47b421(0x1d8)](_0x49a850)[_0x47b421(0xf7)](_0x1512e9=>{const _0x2d7ad9=_0x47b421;if(_0x1512e9)_0x1512e9[_0x2d7ad9(0x26c)][_0x2d7ad9(0x24e)](_0x2d7ad9(0x230));});const _0x46306b=_0x49a850[_0x7e619d];if(_0x46306b)_0x46306b[_0x47b421(0x26c)][_0x47b421(0x1c5)](_0x47b421(0x230));this[_0x47b421(0x213)][_0x47b421(0x81)]['forEach'](_0x303045=>{const _0x347d00=_0x47b421;_0x303045['classList'][_0x347d00(0x138)](_0x347d00(0x27b),(_0x303045[_0x347d00(0x278)][_0x347d00(0x113)]||_0x347d00(0x87))===_0x7e619d);}),requestAnimationFrame(()=>this[_0x47b421(0x97)]());}[_0x48dc98(0x269)](){const _0x10a76c=_0x48dc98;this[_0x10a76c(0x213)][_0x10a76c(0xc6)][_0x10a76c(0x26c)][_0x10a76c(0x1c5)](_0x10a76c(0x1ed)),this['elements']['closeModalButton'][_0x10a76c(0x1bd)]();}['closeSourceData'](){const _0x3dadf8=_0x48dc98;this[_0x3dadf8(0x213)][_0x3dadf8(0xc6)][_0x3dadf8(0x26c)][_0x3dadf8(0x24e)](_0x3dadf8(0x1ed));}[_0x48dc98(0x200)](_0x5cd4f6){const _0x59b5db=_0x48dc98;window[_0x59b5db(0x27f)](this[_0x59b5db(0x158)]),this[_0x59b5db(0x213)]['toast'][_0x59b5db(0x16f)]=_0x5cd4f6,this[_0x59b5db(0x213)][_0x59b5db(0x24d)][_0x59b5db(0x26c)][_0x59b5db(0x1c5)](_0x59b5db(0x1ed)),this[_0x59b5db(0x158)]=window['setTimeout'](()=>{const _0x14b10f=_0x59b5db;this[_0x14b10f(0x213)][_0x14b10f(0x24d)][_0x14b10f(0x26c)][_0x14b10f(0x24e)](_0x14b10f(0x1ed));},0xa28);}}function safeRatio(_0x3c56d3,_0x562aeb){const _0x314c45=_0x48dc98;if(!Number[_0x314c45(0xff)](_0x3c56d3)||!Number[_0x314c45(0xff)](_0x562aeb)||_0x562aeb<=0x0)return 0x0;return _0x3c56d3/_0x562aeb;}function clamp(_0x163f0d,_0x5884ad,_0x282fd7){const _0x472f3e=_0x48dc98;return Math['min'](Math[_0x472f3e(0x120)](_0x163f0d,_0x5884ad),_0x282fd7);}function _0x2708(_0xc1f53e,_0x484319){_0xc1f53e=_0xc1f53e-0x7c;const _0x320887=_0x3208();let _0x2708ce=_0x320887[_0xc1f53e];return _0x2708ce;}function roundTo(_0x252741,_0x267b34){const _0x3e4bea=0xa**_0x267b34;return Math['round']((_0x252741+Number['EPSILON'])*_0x3e4bea)/_0x3e4bea;}function formatNumberForInput(_0x2857f1,_0x312716){const _0x2e2b6d=_0x48dc98;return Number(_0x2857f1)[_0x2e2b6d(0x179)](_0x312716);}function formatNumber(_0x218ded,_0x20d92d){const _0x339312=_0x48dc98;return new Intl[(_0x339312(0xed))](_0x339312(0x155),{'minimumFractionDigits':_0x20d92d,'maximumFractionDigits':_0x20d92d})[_0x339312(0x18e)](_0x218ded);}function escapeHtml(_0x44485e){const _0x520c73=_0x48dc98;return String(_0x44485e)[_0x520c73(0x279)]('&','&amp;')['replaceAll']('<','&lt;')[_0x520c73(0x279)]('>',_0x520c73(0x23e))[_0x520c73(0x279)]('\x22',_0x520c73(0x84))[_0x520c73(0x279)]('\x27',_0x520c73(0x249));}function roundRect(_0x20d03b,_0x3f4c0a,_0x19c18f,_0x2301d5,_0x4e3e9b,_0x5304fe){const _0x2358de=_0x48dc98;_0x20d03b[_0x2358de(0x136)](),_0x20d03b[_0x2358de(0x253)](_0x3f4c0a+_0x5304fe,_0x19c18f),_0x20d03b[_0x2358de(0x11d)](_0x3f4c0a+_0x2301d5,_0x19c18f,_0x3f4c0a+_0x2301d5,_0x19c18f+_0x4e3e9b,_0x5304fe),_0x20d03b[_0x2358de(0x11d)](_0x3f4c0a+_0x2301d5,_0x19c18f+_0x4e3e9b,_0x3f4c0a,_0x19c18f+_0x4e3e9b,_0x5304fe),_0x20d03b[_0x2358de(0x11d)](_0x3f4c0a,_0x19c18f+_0x4e3e9b,_0x3f4c0a,_0x19c18f,_0x5304fe),_0x20d03b[_0x2358de(0x11d)](_0x3f4c0a,_0x19c18f,_0x3f4c0a+_0x2301d5,_0x19c18f,_0x5304fe),_0x20d03b[_0x2358de(0x151)]();}window[_0x48dc98(0x1e3)](_0x48dc98(0x183),()=>{new ServoVisualizerApp();});function _0x3208(){const _0x3d5f47=['updateSmoke','warningHigh','click','lineDash','mobilePanel','geometry','Пошкодження','top','Варіант\x201\x20—\x20легкий\x20стіл,\x20швидкий\x20хід','Clock','variant-9','shadowBlur','left','font','arcTo','Передавальне\x20число\x20редуктора','rgba(15,\x2023,\x2042,\x200.78)','max','mechanicalDamageSpeed','normalizedCycleTime','rotation','arc','69OgpTKp','aspect','addScaledVector','createSparkSystem','sourceDataButton','timeSeries','loadPercent','updateMotorMaterial','rgba(34,\x20197,\x2094,\x200.14)','servoVisualizer.selectedVariantId','Color','\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<option\x20value=\x22','.mobile-tab','height','setLineDash','Параметри\x20підібрані\x20в\x20робочому\x20діапазоні.\x20Рух\x20стабільний,\x20без\x20перегріву\x20та\x20без\x20ознак\x20механічного\x20пошкодження.','drawLiveScopeTrace','beginPath','Внесіть\x20розраховані\x20дані\x20системи\x20для\x20варіанту\x20«','toggle','Швидкість\x20завелика.\x20Стіл\x20рухається\x20різко;\x20краще\x20зменшити\x20оберти\x20або\x20змінити\x20редуктор.','parts','speedWarningHigh','швидко','setSize','powerW','rail','middle','sparkParticles','runEvaluation','high-performance','speedLabel','classifySpeed','scene','getItem','Запас\x20замалий.\x20Система\x20ще\x20може\x20рухатись,\x20але\x20працюватиме\x20на\x20межі\x20можливостей.\x20Варто\x20збільшити\x20момент\x20і\x20потужність.','drawEmptyOscilloscope','scopeAnimationFrame','nut','sin','gearbox','shadowColor','burnMotor','findIndex','closePath','statusText','restore','повільно','uk-UA','powerScopeTimeMax','Система\x20рухається\x20повільно,\x20температура\x20сервоприводу\x20зростає.\x20Якщо\x20не\x20скинути\x20режим,\x20двигун\x20згорить.','toastTimeout','114104QtrDxY','push','\x20мм/об','clearRect','strokeDirection','21492922apZLBW','WebGLRenderer','smokeParticles','ККД\x20редуктора','—\x20<small>%</small>','PCFSoftShadowMap','emissive','machine','readSelection','26606DJzCkp','min','700\x2042px\x20Inter,\x20Arial,\x20sans-serif','scopeGrid','lastEvaluation','Sprite','message\x20danger\x20motor-burned','Натисніть\x20«Перевірити\x20і\x20запустити»,\x20щоб\x20побачити\x20рух\x20столу\x20та\x20реакцію\x20сервоприводу.','textContent','tableTop','bottom','Максимальний\x20час\x20переміщення','style','TubeGeometry','frictionCoefficient','Кулькогвинт','colorSpace','oversized','toFixed','powerLabel','evaluateSelection','selection','завеликий\x20запас','Симуляцію\x20запущено.\x20Оцініть\x20рух\x20і\x20стан\x20сервоприводу.','motorLoadLabel','motorCap','renderDiagnostics','headColor','DOMContentLoaded','position','damaged','небезпечно','Швидкість\x20двигуна\x20занадто\x20низька.\x20Переміщення\x20буде\x20повільним\x20і\x20може\x20не\x20вкладатися\x20у\x20заданий\x20час.','motorBody','speedWarningLow','setFromPoints','round','надмірно','Система\x20готова\x20до\x20перевірки','format','Н·м','Очікує\x20запуску','Варіант\x205\x20—\x20довший\x20хід,\x20помірна\x20швидкість','PerspectiveCamera','width','loadBar','validationBadge','fill','fast','torquePercent','Перевантаження\x20і\x20перегрів','calculateMotorLoadPercent','textAlign','rgba(239,68,68,0)','setAttribute','torqueBar','aria-expanded','moveTimeSec','gearboxEfficiency','Mesh','ККД\x20сервоприводу','statusForEvaluation','velocity','age','225JjCvQb','populateSourceData','powerReserveFactor','baseScale','shaft','shadow','Оберти\x20завеликі.\x20Стіл\x20рухається\x20різко,\x20тому\x20краще\x20зменшити\x20швидкість\x20або\x20змінити\x20передавальне\x20число.','getMotionSnapshot','warn','spark','\x20м/с²','Камеру\x20повернуто\x20до\x20початкового\x20положення.','Scene','startScopeAnimation','maxPolarAngle','multiplyScalar','Виберіть\x20свій\x20варіант\x20у\x20формі\x20«Вихідні\x20дані»\x20і\x20внесіть\x20розраховані\x20налаштування\x20системи\x20в\x20меню\x20«Параметри».','find','Повільно','screwLeadMm','sourceData','headGlowColor','focus','tablePosition','setEvaluation','closeSourceData','torqueRatio','variant-10','gravity','momentScopeTimeMax','add','life','BoxGeometry','.\x20Введіть\x20нові\x20параметри\x20сервоприводу.','CatmullRomCurve3','normal','canvas','startupHintTitle','Швидкість\x20дещо\x20завелика.\x20Рух\x20можливий,\x20але\x20бажано\x20наблизити\x20оберти\x20до\x20розрахункового\x20значення.','powerScopeCanvas','tableSpeedFactor','speedRatio','добре','speedPercent','exp','updateSparks','clientHeight','1875902cdZrKm','powerRatio','values','invalid','screw','cracks','variant-4','form','setMobilePanel','resetViewButton','servoEfficiency','target','addColorStop','addEventListener','querySelectorAll','danger','\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<article\x20class=\x22data-item\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22data-label\x22>','rgba(15,23,42,0)','speedBar','applyScopeCollapsedState','Поточний\x20варіант:\x20','scopeResizeFrame','bar','open','localStorage','setTransform','rgba(148,\x20163,\x20184,\x200.55)','DirectionalLight','<span\x20class=\x22dot\x22></span>','rgba(226,232,240,0.72)','statusStrip','join','clearStudentInputs','buildScopeSeries','#07111f','fillStyle','key','motorRpm','.left-panel','currentVariant','damageHeatSeconds','animate','showToast','required','MeshStandardMaterial','value','querySelector','scopeToggleButton','clone','fillText','innerHeight','Надмірний\x20запас','tableMassKg','Ризик','rgba(52,\x20211,\x20153,\x200.42)','castShadow','dispatchEvent','getContext','className','\x20<small>%</small>','setSourceData','elements','idealHigh','variant-7','104072IBDrcP','changeVariant','motor-burned','selectedSpeed','example','minDistance','rgba(52,\x20211,\x20153,\x200.52)','addMechanicalDamage','stroke','lineTo','Згорнути\x20графіки','parent','momentSelected','LineBasicMaterial','motorBurned','statusTitle','populateVariantSelect','save','motorTorqueNm','controls','variant-2','Маса\x20робочого\x20столу','domElement','33invvoq','clearDamageVisuals','validateInputs','mobile-active','motorForm','Варіант\x207\x20—\x20навантажена\x20вісь\x20верстата','Швидко','CylinderGeometry','headRadius','variant-6','hidden','camera','bindEvents','Обрано:\x20','Двигун\x20пошкоджено:\x20перевантаження\x20призвело\x20до\x20перегріву\x20і\x20згорання.\x20Натисніть\x20«Скинути»,\x20щоб\x20відновити\x20симуляцію.','classifyMotorLoad','setupCamera','&gt;','Дані\x20коректні','renderEmptyScopes','tableSide','hideStartupHint','fillRect','resetCamera','shadowMap','createSmokeSystem','resetDamage','text','&#039;','screwSpinAxis','collapsed','span','toast','remove','dispose','trim','Варіант\x204\x20—\x20короткий\x20хід,\x20висока\x20точність','createRadialGradient','moveTo','motorPowerW','bearing','Не\x20вдалося\x20зберегти\x20вибраний\x20варіант\x20у\x20localStorage.','div','cos','Vector3','update','powerDemand','code','Прискорення\x20вільного\x20падіння','messages','Двигун\x20пошкоджено','strokeStyle','Коефіцієнт\x20запасу\x20потужності','createLabels','renderStartupHint','isRunning','criticalLow','right','clientWidth','momentDemand','openSourceData','makeTextSprite','Момент\x20або\x20потужність\x20суттєво\x20нижчі\x20за\x20потрібні.\x20Стіл\x20рухається\x20повільно,\x20сервопривод\x20перевантажується,\x20нагрівається\x20і\x20може\x20згоріти.','classList','lineWidth','powerBar','Перегрів','material','strokeMm','showMotorBurnedInfo','closest','Надмірно','критично\x20мало','torqueLabel','Варіант\x209\x20—\x20повільна\x20силова\x20подача','dataset','replaceAll','1410ZkokpM','active','setPixelRatio','copy','Нормальна\x20робота','clearTimeout','BufferGeometry','mapSize','prepareScopeCanvas','state','box','setStatusStripMode','areScopesCollapsed','preventDefault','traverse','opacity','mobileTabs','speedIdealHigh','some','&quot;','Готово','createLeadScrew','none','model','Group','closeModalButton','ризик\x20перегріву','Коефіцієнт\x20тертя\x20напрямних','selectedPower','getElementById','updateProjectionMatrix','visible','map','Діаметр\x20кулькогвинта','Занадто\x20швидкий\x20рух','setPill','renderMetric','Стіл\x20рухається\x20плавно.\x20Сервопривод\x20працює\x20без\x20перегріву\x20та\x20без\x20ознак\x20перевантаження.','redrawScopes','currentVariantNote','outputColorSpace','hotMotorMaterial','toggleScopes','random','2290lOcwFM','selectedTorque','powerPercent','severity','submit','bar\x20','resize','mode','startupHintText','children','SpriteMaterial','loadLabel','tableGroup','motorHot','applyExampleDefaultsIfNeeded','slow','createElement','running','render','ShadowMaterial','type','saveSelectedVariant','classifyReserve','ratios','torqueNm','Швидкість\x20нижча\x20за\x20бажану.\x20Збільшіть\x20оберти\x20або\x20перегляньте\x20передавальне\x20число.','buildMachine','</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20</article>\x0a\x20\x20\x20\x20\x20\x20\x20\x20','overheat','</option>\x0a\x20\x20\x20\x20\x20\x20\x20\x20','heatRate','defaultMotorMaterial','createParticleTexture','freeze','PlaneGeometry','\x20мм','pow','reserveLabel','from','<div\x20class=\x22message\x20','CanvasTexture','modalBackdrop','scale','innerHTML','clock','Варіант\x208\x20—\x20компактний\x20привід\x20без\x20великого\x20редуктора','renderCurrentVariantNote','devicePixelRatio','Пошкодження,\x20перегрів\x20і\x20дим\x20скинуто.','modeBadge','momentScopeCanvas','дуже\x20повільно','Редуктор','renderEmptyDiagnostics','#34d399','contains','Сервопривод','warningLow','heat','sprite','setupLights','change','textBaseline','headGlowBlur','speedRpm','near','drawOscilloscope','dampingFactor','drawScopeGrid','SRGBColorSpace','screwDiameterMm','Варіант\x203\x20—\x20важчий\x20стіл,\x20плавний\x20рух','Сервоприводу\x20бракує\x20запасу.\x20Рух\x20можливий,\x20але\x20є\x20ризик\x20перегріву\x20при\x20тривалій\x20роботі.','Початок\x20роботи','sourceDataGrid','renderer','title','rotateOnAxis','\x20кг','calculateRequirements','NumberFormat','hasStoredVariantOnStartup','variantSelect','set','length','6628400IhHSKE','motorGroup','keydown','getDelta','burnedMotorMaterial','forEach','Надто\x20великі\x20параметри\x20спричиняють\x20ударний\x20рух,\x20вібрацію,\x20тріщини\x20та\x20іскри\x20в\x20механічній\x20частині.\x20Зменште\x20момент,\x20потужність\x20або\x20швидкість\x20до\x20реалістичного\x20діапазону.','speedCriticalLow','burned','time','HemisphereLight','Варіант\x2010\x20—\x20швидка\x20легка\x20координатна\x20вісь','mechanicalStress','isFinite','Робота\x20на\x20межі','receiveShadow','resetDamageButton','data','PointLight','mechanicalDamage','renderScopes','Хід\x20гвинта\x20L','max\x20','idle','center','</div>','innerWidth','gearRatio','Введіть\x20додатні\x20числові\x20значення\x20для\x20всіх\x20параметрів.'];_0x3208=function(){return _0x3d5f47;};return _0x3208();}
+  </script>
+</body>
+</html>
